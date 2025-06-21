@@ -5,7 +5,13 @@ import Shipment from "../lib/models/Shipment";
 config(); // Load .env.local
 
 async function seed() {
-    await mongoose.connect(process.env.MONGODB_URI!);
+    const uri = process.env.MONGODB_URI;
+
+    if (!uri) {
+        throw new Error("❌ MONGODB_URI is not defined in the environment.");
+    }
+
+    await mongoose.connect(uri);
     await Shipment.deleteMany(); // Reset
 
     await Shipment.insertMany([
