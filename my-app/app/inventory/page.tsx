@@ -99,6 +99,22 @@ const inventory = [
     costPerUnit: 380,
     status: "Low Stock",
   },
+
+  {
+    id: "INV-007",
+    item: "Plywood Sheets",
+    category: "Engineered",
+    quantity: 15,
+    unit: "m³",
+    minStock: 25,
+    maxStock: 100,
+    location: "Warehouse B-1",
+    receivedDate: "2023-11-15",
+    expiryDate: "2024-02-15",
+    supplier: "Indonesian Wood Supply",
+    costPerUnit: 380,
+    status: "Low Stock",
+  },
 ]
 
 const getStatusColor = (status: string) => {
