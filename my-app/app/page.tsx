@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { AlertTriangle, Package, Ship, TrendingDown, Clock, DollarSign, ShoppingCart } from "lucide-react"
 import Link from "next/link"
+import { UserNav } from "@/components/user-nav"
 
 // Mock data for demonstration
 const shipmentSummary = {
@@ -127,7 +128,7 @@ export default function Dashboard() {
               <h1 className="text-3xl font-bold text-gray-900">Singapore Pallet Works</h1>
               <p className="text-gray-600">Shipment, Inventory & Order Management Dashboard</p>
             </div>
-            <div className="flex space-x-4">
+            <div className="flex items-center space-x-4">
               <Button asChild>
                 <Link href="/shipments">Shipments</Link>
               </Button>
@@ -137,6 +138,7 @@ export default function Dashboard() {
               <Button variant="outline" asChild>
                 <Link href="/orders">Orders</Link>
               </Button>
+              <UserNav />
             </div>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ArrowLeft, Search, Filter, Download, Ship, Clock, AlertTriangle } from "lucide-react"
 import Link from "next/link"
+import { UserNav } from "@/components/user-nav"
 
 // Mock incoming shipment data
 const incomingShipments = [
@@ -127,6 +128,7 @@ export default function IncomingShipmentsPage() {
                 Export
               </Button>
               <Button size="sm">Add Incoming Shipment</Button>
+              <UserNav />
             </div>
           </div>
         </div>

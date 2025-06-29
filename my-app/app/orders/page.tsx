@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ArrowLeft, Search, Filter, Download, ShoppingCart, DollarSign, Truck, AlertCircle } from "lucide-react"
 import Link from "next/link"
+import { UserNav } from "@/components/user-nav"
 
 // Mock orders data
 const orders = [
@@ -188,6 +189,7 @@ export default function OrdersPage() {
                 Export
               </Button>
               <Button size="sm">New Order</Button>
+              <UserNav />
             </div>
           </div>
         </div>
