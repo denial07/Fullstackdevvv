@@ -6,7 +6,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Progress } from "@/components/ui/progress"
 import { ArrowLeft, Search, Filter, Download, Package, AlertTriangle, Clock, TrendingDown } from "lucide-react"
 import Link from "next/link"
-import { UserNav } from "@/components/user-nav"
 
 // Mock inventory data
 const inventory = [
@@ -169,7 +168,6 @@ export default function InventoryPage() {
                 Export
               </Button>
               <Button size="sm">Add Item</Button>
-              <UserNav />
             </div>
           </div>
         </div>
@@ -313,9 +311,17 @@ export default function InventoryPage() {
                     const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
 
                     return (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.id}</TableCell>
-                        <TableCell>{item.item}</TableCell>
+                      <TableRow key={item.id} className="cursor-pointer hover:bg-gray-50">
+                        <TableCell className="font-medium">
+                          <Link href={`/inventory/${item.id}`} className="text-blue-600 hover:text-blue-800">
+                            {item.id}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <Link href={`/inventory/${item.id}`} className="hover:text-blue-600">
+                            {item.item}
+                          </Link>
+                        </TableCell>
                         <TableCell>{item.category}</TableCell>
                         <TableCell>
                           {item.quantity} {item.unit}
