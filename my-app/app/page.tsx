@@ -125,7 +125,7 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Singapore Pallet Works</h1>
+              <img src="/NGSlogo.png" alt="NGS Logo" className="h-12 w-auto" />
               <p className="text-gray-600">Shipment, Inventory & Order Management Dashboard</p>
             </div>
             <div className="flex items-center space-x-4">
