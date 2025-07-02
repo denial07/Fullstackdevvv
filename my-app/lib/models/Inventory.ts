@@ -1,23 +1,24 @@
-import mongoose, { Schema, models, model } from "mongoose";
+import mongoose from "mongoose"
 
-const InventorySchema = new Schema({
-  id: String,
-  item: String,
-  category: String,
-  quantity: Number,
-  unit: String,
-  minStock: Number,
-  maxStock: Number,
-  location: String,
-  receivedDate: Date,
-  expiryDate: Date,
-  supplier: String,
-  costPerUnit: Number,
-  status: {
-    type: String,
-    enum: ["In Stock", "Low Stock", "Out of Stock", "Expired"], // you can modify based on your needs
+const InventorySchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true, unique: true },
+    item: { type: String, required: true },
+    category: { type: String, required: true },
+    quantity: { type: Number, required: true },
+    unit: { type: String, required: true },
+    minStock: { type: Number, required: true },
+    maxStock: { type: Number, required: true },
+    location: { type: String, required: true },
+    receivedDate: { type: String, required: true },
+    expiryDate: { type: String, required: true },
+    supplier: { type: String, required: true },
+    costPerUnit: { type: Number, required: true },
+    status: { type: String, required: true },
   },
-});
+  {
+    timestamps: true,
+  },
+)
 
-const Inventory = models.Inventory || model("Inventory", InventorySchema);
-export default Inventory;
+export default mongoose.models.Inventory || mongoose.model("Inventory", InventorySchema)
