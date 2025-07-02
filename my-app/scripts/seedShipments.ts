@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { config } from "dotenv";
 import Shipment from "../lib/models/Shipment";
 
-config(); // Load .env.local
+config(); // Load .env
 
 async function seed() {
     const uri = process.env.MONGODB_URI;

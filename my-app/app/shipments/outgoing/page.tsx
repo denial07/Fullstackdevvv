@@ -1,114 +1,67 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ArrowLeft, Search, Filter, Download, Truck, Clock, CheckCircle } from "lucide-react"
-import Link from "next/link"
-import { UserNav } from "@/components/user-nav"
-
-// Mock outgoing shipment data
-const outgoingShipments = [
-  {
-    id: "SH-OUT-001",
-    customer: "ABC Logistics Pte Ltd",
-    status: "Delivered",
-    orderDate: "2024-01-08",
-    shippingDate: "2024-01-10",
-    deliveryDate: "2024-01-10",
-    value: 12500,
-    items: "Standard Pallets x 500",
-    trackingNumber: "SPW2024001",
-    driver: "Ahmad Rahman",
-    vehicle: "SGP 1234A",
-    address: "123 Logistics Ave, Singapore 123456",
-  },
-  {
-    id: "SH-OUT-002",
-    customer: "Singapore Shipping Co.",
-    status: "In Transit",
-    orderDate: "2024-01-10",
-    shippingDate: "2024-01-12",
-    deliveryDate: null,
-    value: 8900,
-    items: "Heavy Duty Pallets x 200",
-    trackingNumber: "SPW2024002",
-    driver: "Raj Kumar",
-    vehicle: "SGP 5678B",
-    address: "456 Maritime Rd, Singapore 654321",
-  },
-  {
-    id: "SH-OUT-003",
-    customer: "Maritime Solutions Ltd",
-    status: "Preparing",
-    orderDate: "2024-01-12",
-    shippingDate: "2024-01-16",
-    deliveryDate: null,
-    value: 6750,
-    items: "Custom Pallets x 150",
-    trackingNumber: "SPW2024003",
-    driver: "TBD",
-    vehicle: "TBD",
-    address: "789 Harbor View, Singapore 987654",
-  },
-  {
-    id: "SH-OUT-004",
-    customer: "Global Trade Hub",
-    status: "Scheduled",
-    orderDate: "2024-01-13",
-    shippingDate: "2024-01-18",
-    deliveryDate: null,
-    value: 15600,
-    items: "Export Pallets x 400",
-    trackingNumber: "SPW2024004",
-    driver: "TBD",
-    vehicle: "TBD",
-    address: "321 Trade Center, Singapore 321654",
-  },
-  {
-    id: "SH-OUT-005",
-    customer: "Port Authority Singapore",
-    status: "Loading",
-    orderDate: "2024-01-11",
-    shippingDate: "2024-01-14",
-    deliveryDate: null,
-    value: 22000,
-    items: "Industrial Pallets x 600",
-    trackingNumber: "SPW2024005",
-    driver: "Wei Ming",
-    vehicle: "SGP 9012C",
-    address: "Port Complex, Singapore 098765",
-  },
-]
+// app/outgoing-shipments/page.tsx
+import { connectToDatabase } from "@/lib/mongodb";
+import Shipment from "@/lib/models/Shipment";
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  ArrowLeft, Search, Filter, Download, Truck, Clock, CheckCircle,
+} from "lucide-react";
+import Link from "next/link";
+import { UserNav } from "@/components/user-nav";
 
 const getStatusColor = (status: string) => {
   switch (status) {
     case "Delivered":
-      return "default"
+      return "default";
     case "In Transit":
-      return "secondary"
     case "Loading":
-      return "secondary"
+      return "secondary";
     case "Preparing":
-      return "outline"
     case "Scheduled":
-      return "outline"
+      return "outline";
     default:
-      return "secondary"
+      return "secondary";
   }
-}
+};
 
-export default function OutgoingShipmentsPage() {
-  const totalValue = outgoingShipments.reduce((sum, shipment) => sum + shipment.value, 0)
-  const deliveredShipments = outgoingShipments.filter((s) => s.status === "Delivered").length
-  const inTransitShipments = outgoingShipments.filter((s) => s.status === "In Transit" || s.status === "Loading").length
+export default async function OutgoingShipmentsPage() {
+  await connectToDatabase();
+  const rawShipments = await Shipment.find({ type: "outgoing" }).lean();
+
+  const outgoingShipments = rawShipments.map((s: any) => ({
+    id: s.id,
+    customer: s.customer,
+    status: s.status,
+    orderDate: s.orderDate?.toISOString().split("T")[0] || "-",
+    shippingDate: s.shippingDate?.toISOString().split("T")[0] || "-",
+    deliveryDate: s.deliveryDate?.toISOString().split("T")[0] || null,
+    value: s.price,
+    items: s.description,
+    trackingNumber: s.trackingNumber || s.id,
+    driver: s.driver || "TBD",
+    vehicle: s.vehicle || "TBD",
+    address: s.address,
+  }));
+
+  const totalValue = outgoingShipments.reduce((sum, shipment) => sum + shipment.value, 0);
+  const deliveredShipments = outgoingShipments.filter((s) => s.status === "Delivered").length;
+  const inTransitShipments = outgoingShipments.filter(
+    (s) => s.status === "In Transit" || s.status === "Loading"
+  ).length;
   const preparingShipments = outgoingShipments.filter(
-    (s) => s.status === "Preparing" || s.status === "Scheduled",
-  ).length
+    (s) => s.status === "Preparing" || s.status === "Scheduled"
+  ).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* Summary Cards */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-6">
@@ -137,7 +90,6 @@ export default function OutgoingShipmentsPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -188,7 +140,7 @@ export default function OutgoingShipmentsPage() {
           </Card>
         </div>
 
-        {/* Filters and Search */}
+        {/* Search and Filter */}
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Search & Filter</CardTitle>
@@ -241,7 +193,7 @@ export default function OutgoingShipmentsPage() {
                       <TableCell>
                         <Badge variant={getStatusColor(shipment.status)}>{shipment.status}</Badge>
                       </TableCell>
-                      <TableCell className="max-w-xs truncate">{shipment.items}</TableCell>
+                      <TableCell>{shipment.items}</TableCell>
                       <TableCell>{shipment.orderDate}</TableCell>
                       <TableCell>{shipment.shippingDate}</TableCell>
                       <TableCell>{shipment.deliveryDate || "-"}</TableCell>
@@ -257,7 +209,7 @@ export default function OutgoingShipmentsPage() {
           </CardContent>
         </Card>
 
-        {/* Delivery Fleet Status */}
+        {/* Delivery Fleet Status Section */}
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Delivery Fleet Status</CardTitle>
@@ -286,5 +238,5 @@ export default function OutgoingShipmentsPage() {
         </Card>
       </main>
     </div>
-  )
+  );
 }
