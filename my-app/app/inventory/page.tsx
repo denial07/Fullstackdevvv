@@ -1,105 +1,31 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Search, Filter, Download, Package, AlertTriangle, Clock, TrendingDown } from "lucide-react"
+import { ArrowLeft, Search, Filter, Download, Package, AlertTriangle, Clock, TrendingDown, Loader2 } from "lucide-react"
 import Link from "next/link"
 
-// Mock inventory data
-const inventory = [
-  {
-    id: "INV-001",
-    item: "Teak Wood Planks",
-    category: "Hardwood",
-    quantity: 45,
-    unit: "m³",
-    minStock: 50,
-    maxStock: 200,
-    location: "Warehouse A-1",
-    receivedDate: "2023-12-15",
-    expiryDate: "2024-02-15",
-    supplier: "Malaysian Timber Co.",
-    costPerUnit: 850,
-    status: "Low Stock",
-  },
-  {
-    id: "INV-002",
-    item: "Pine Wood Boards",
-    category: "Softwood",
-    quantity: 12,
-    unit: "m³",
-    minStock: 30,
-    maxStock: 150,
-    location: "Warehouse B-2",
-    receivedDate: "2023-11-20",
-    expiryDate: "2024-01-20",
-    supplier: "Indonesian Wood Supply",
-    costPerUnit: 420,
-    status: "Expiring Soon",
-  },
-  {
-    id: "INV-003",
-    item: "Oak Wood Sheets",
-    category: "Hardwood",
-    quantity: 8,
-    unit: "m³",
-    minStock: 25,
-    maxStock: 100,
-    location: "Warehouse A-3",
-    receivedDate: "2023-10-10",
-    expiryDate: "2024-01-10",
-    supplier: "Thai Forest Products",
-    costPerUnit: 920,
-    status: "Expired",
-  },
-  {
-    id: "INV-004",
-    item: "Bamboo Planks",
-    category: "Sustainable",
-    quantity: 85,
-    unit: "m³",
-    minStock: 40,
-    maxStock: 120,
-    location: "Warehouse C-1",
-    receivedDate: "2024-01-05",
-    expiryDate: "2024-04-05",
-    supplier: "Vietnamese Lumber Ltd.",
-    costPerUnit: 320,
-    status: "Good",
-  },
-  {
-    id: "INV-005",
-    item: "Mahogany Boards",
-    category: "Hardwood",
-    quantity: 32,
-    unit: "m³",
-    minStock: 20,
-    maxStock: 80,
-    location: "Warehouse A-2",
-    receivedDate: "2023-12-20",
-    expiryDate: "2024-03-20",
-    supplier: "Malaysian Timber Co.",
-    costPerUnit: 1150,
-    status: "Good",
-  },
-  {
-    id: "INV-006",
-    item: "Plywood Sheets",
-    category: "Engineered",
-    quantity: 15,
-    unit: "m³",
-    minStock: 25,
-    maxStock: 100,
-    location: "Warehouse B-1",
-    receivedDate: "2023-11-15",
-    expiryDate: "2024-02-15",
-    supplier: "Indonesian Wood Supply",
-    costPerUnit: 380,
-    status: "Low Stock",
-  },
-]
+interface InventoryItem {
+  _id: string
+  id: string
+  item: string
+  category: string
+  quantity: number
+  unit: string
+  minStock: number
+  maxStock: number
+  location: string
+  receivedDate: string
+  expiryDate: string
+  supplier: string
+  costPerUnit: number
+  status: string
+}
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -138,6 +64,65 @@ const getDaysUntilExpiry = (expiryDate: string) => {
 }
 
 export default function InventoryPage() {
+  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+
+  useEffect(() => {
+    fetchInventory()
+  }, [])
+
+  const fetchInventory = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch("/api/inventory")
+      if (!response.ok) {
+        throw new Error("Failed to fetch inventory")
+      }
+      const data = await response.json()
+      setInventory(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filteredInventory = inventory.filter(
+    (item) =>
+      item.item.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.location.toLowerCase().includes(searchTerm.toLowerCase()),
+  )
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Loading inventory...</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-red-600">Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <Button onClick={fetchInventory}>Try Again</Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   const totalItems = inventory.length
   const lowStockItems = inventory.filter((item) => item.status === "Low Stock").length
   const expiringSoonItems = inventory.filter((item) => item.status === "Expiring Soon").length
@@ -241,7 +226,7 @@ export default function InventoryPage() {
                 .filter((item) => item.status === "Expired" || item.status === "Expiring Soon")
                 .map((item) => (
                   <div
-                    key={item.id}
+                    key={item._id}
                     className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg"
                   >
                     <div className="flex items-center space-x-3">
@@ -270,7 +255,12 @@ export default function InventoryPage() {
               <div className="flex-1">
                 <div className="relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search by item name, category, or location..." className="pl-10" />
+                  <Input
+                    placeholder="Search by item name, category, or location..."
+                    className="pl-10"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
                 </div>
               </div>
               <Button variant="outline">
@@ -306,22 +296,14 @@ export default function InventoryPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {inventory.map((item) => {
+                  {filteredInventory.map((item) => {
                     const stockPercentage = (item.quantity / item.maxStock) * 100
                     const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
 
                     return (
-                      <TableRow key={item.id} className="cursor-pointer hover:bg-gray-50">
-                        <TableCell className="font-medium">
-                          <Link href={`/inventory/${item.id}`} className="text-blue-600 hover:text-blue-800">
-                            {item.id}
-                          </Link>
-                        </TableCell>
-                        <TableCell>
-                          <Link href={`/inventory/${item.id}`} className="hover:text-blue-600">
-                            {item.item}
-                          </Link>
-                        </TableCell>
+                      <TableRow key={item._id}>
+                        <TableCell className="font-medium">{item.id}</TableCell>
+                        <TableCell>{item.item}</TableCell>
                         <TableCell>{item.category}</TableCell>
                         <TableCell>
                           {item.quantity} {item.unit}
