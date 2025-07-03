@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, Ship, Truck, Plus } from "lucide-react"
 import Link from "next/link"
 import { UserNav } from "@/components/user-nav"
+import { Edit } from "lucide-react" // Make sure this is at the top
 
 export default async function ShipmentsPage() {
   await connectToDatabase()
@@ -156,6 +157,17 @@ export default async function ShipmentsPage() {
                         ETA: {new Date(shipment.shippingDate).toLocaleDateString()}
                       </p>
                       <p className="font-medium mt-2">S${(shipment.price || 0).toLocaleString()}</p>
+
+                      {/* Edit Button */}
+                      <div className="mt-4 text-right">
+                        <Link
+                          href={`/shipments/${shipment._id}/edit`}
+                          className="inline-flex items-center text-sm text-blue-600 hover:underline"
+                        >
+                          <Edit className="w-4 h-4 mr-1" />
+                          Edit
+                        </Link>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -222,3 +234,5 @@ export default async function ShipmentsPage() {
     </div>
   )
 }
+
+

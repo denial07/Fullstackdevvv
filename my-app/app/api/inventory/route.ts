@@ -1,26 +1,20 @@
 import { connectToDatabase } from "@/lib/mongodb"
-import Inventory from "@/lib/models/Inventory"
-import { NextResponse } from "next/server"
+import Shipment from "@/lib/models/Shipment"
+import { NextRequest } from "next/server"
 
-export async function GET() {
-  try {
-    await connectToDatabase()
-    const inventory = await Inventory.find().sort({ createdAt: -1 })
-    return NextResponse.json(inventory)
-  } catch (error) {
-    console.error("Error fetching inventory:", error)
-    return NextResponse.json({ error: "Failed to fetch inventory" }, { status: 500 })
-  }
+export async function GET(req: NextRequest, context: { params: { id: string } }) {
+  await connectToDatabase()
+  const { id } = context.params 
+  const shipment = await Shipment.findById(id)
+  if (!shipment) return new Response("Not found", { status: 404 })
+  return Response.json(shipment)
 }
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json()
-    await connectToDatabase()
-    const newItem = await Inventory.create(body)
-    return NextResponse.json(newItem, { status: 201 })
-  } catch (error) {
-    console.error("Error creating inventory item:", error)
-    return NextResponse.json({ error: "Failed to create inventory item" }, { status: 500 })
-  }
+
+export async function PATCH(req: NextRequest, context: { params: { id: string } }) {
+  await connectToDatabase()
+  const body = await req.json()
+  const { id } = context.params
+  const updated = await Shipment.findByIdAndUpdate(id, body, { new: true })
+  return Response.json(updated)
 }
