@@ -52,9 +52,11 @@ export default async function ShipmentsPage() {
               </div>
             </div>
             <div className="flex space-x-2">
-              <Button variant="outline" size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Shipment
+              <Button asChild variant="outline" size="sm">
+                <Link href="/shipments/add">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Shipment
+                </Link>
               </Button>
               <UserNav />
             </div>
