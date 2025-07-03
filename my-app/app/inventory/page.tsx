@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   ArrowLeft,
   Search,
-  Filter,
   Download,
   Package,
   AlertTriangle,
@@ -18,6 +19,8 @@ import {
   TrendingDown,
   Loader2,
   RefreshCw,
+  X,
+  SlidersHorizontal,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -37,6 +40,17 @@ interface InventoryItem {
   supplier: string
   costPerUnit: number
   status: string
+}
+
+interface Filters {
+  category: string
+  status: string
+  location: string
+  supplier: string
+  minQuantity: string
+  maxQuantity: string
+  minCost: string
+  maxCost: string
 }
 
 const getStatusColor = (status: string) => {
@@ -80,6 +94,17 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
+  const [filters, setFilters] = useState<Filters>({
+    category: "",
+    status: "",
+    location: "",
+    supplier: "",
+    minQuantity: "",
+    maxQuantity: "",
+    minCost: "",
+    maxCost: "",
+  })
+  const [showFilters, setShowFilters] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -121,12 +146,76 @@ export default function InventoryPage() {
     router.push(`/inventory/${itemId}`)
   }
 
-  const filteredInventory = inventory.filter(
-    (item) =>
+  const handleFilterChange = (key: keyof Filters, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const clearFilters = () => {
+    setFilters({
+      category: "",
+      status: "",
+      location: "",
+      supplier: "",
+      minQuantity: "",
+      maxQuantity: "",
+      minCost: "",
+      maxCost: "",
+    })
+    setSearchTerm("")
+  }
+
+  const getActiveFilterCount = () => {
+    return Object.values(filters).filter((value) => value !== "").length + (searchTerm ? 1 : 0)
+  }
+
+  // Get unique values for filter dropdowns
+  const uniqueCategories = [...new Set(inventory.map((item) => item.category))].sort()
+  const uniqueStatuses = [...new Set(inventory.map((item) => item.status))].sort()
+  const uniqueLocations = [...new Set(inventory.map((item) => item.location))].sort()
+  const uniqueSuppliers = [...new Set(inventory.map((item) => item.supplier))].sort()
+
+  const filteredInventory = inventory.filter((item) => {
+    // Search filter
+    const matchesSearch =
+      !searchTerm ||
       item.item.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.location.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+      item.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.supplier.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.id.toLowerCase().includes(searchTerm.toLowerCase())
+
+    // Category filter
+    const matchesCategory = !filters.category || item.category === filters.category
+
+    // Status filter
+    const matchesStatus = !filters.status || item.status === filters.status
+
+    // Location filter
+    const matchesLocation = !filters.location || item.location === filters.location
+
+    // Supplier filter
+    const matchesSupplier = !filters.supplier || item.supplier === filters.supplier
+
+    // Quantity filters
+    const matchesMinQuantity = !filters.minQuantity || item.quantity >= Number.parseInt(filters.minQuantity)
+    const matchesMaxQuantity = !filters.maxQuantity || item.quantity <= Number.parseInt(filters.maxQuantity)
+
+    // Cost filters
+    const matchesMinCost = !filters.minCost || item.costPerUnit >= Number.parseFloat(filters.minCost)
+    const matchesMaxCost = !filters.maxCost || item.costPerUnit <= Number.parseFloat(filters.maxCost)
+
+    return (
+      matchesSearch &&
+      matchesCategory &&
+      matchesStatus &&
+      matchesLocation &&
+      matchesSupplier &&
+      matchesMinQuantity &&
+      matchesMaxQuantity &&
+      matchesMinCost &&
+      matchesMaxCost
+    )
+  })
 
   const totalItems = inventory.length
   const lowStockItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "low stock").length
@@ -231,6 +320,7 @@ export default function InventoryPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{totalItems}</div>
+              <p className="text-xs text-muted-foreground">{filteredInventory.length} filtered</p>
             </CardContent>
           </Card>
 
@@ -336,29 +426,217 @@ export default function InventoryPage() {
           </Card>
         )}
 
-        {/* Filters and Search */}
+        {/* Search and Filters */}
         {inventory.length > 0 && (
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Search & Filter</CardTitle>
+              <CardDescription>
+                {filteredInventory.length} of {inventory.length} items shown
+                {getActiveFilterCount() > 0 &&
+                  ` • ${getActiveFilterCount()} filter${getActiveFilterCount() > 1 ? "s" : ""} active`}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search by item name, category, or location..."
-                      className="pl-10"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+              <div className="space-y-4">
+                {/* Search and Filter Toggle */}
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search by item name, category, location, supplier, or ID..."
+                        className="pl-10"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Popover open={showFilters} onOpenChange={setShowFilters}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="relative bg-transparent">
+                          <SlidersHorizontal className="h-4 w-4 mr-2" />
+                          Filters
+                          {getActiveFilterCount() > 0 && (
+                            <Badge variant="secondary" className="ml-2 h-5 w-5 rounded-full p-0 text-xs">
+                              {getActiveFilterCount()}
+                            </Badge>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-96" align="end">
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium">Filters</h4>
+                            {getActiveFilterCount() > 0 && (
+                              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                                <X className="h-4 w-4 mr-1" />
+                                Clear All
+                              </Button>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            {/* Category Filter */}
+                            <div>
+                              <label className="text-sm font-medium">Category</label>
+                              <Select
+                                value={filters.category}
+                                onValueChange={(value) => handleFilterChange("category", value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="All categories" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="All">All categories</SelectItem>
+                                  {uniqueCategories.map((category) => (
+                                    <SelectItem key={category} value={category}>
+                                      {category}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {/* Status Filter */}
+                            <div>
+                              <label className="text-sm font-medium">Status</label>
+                              <Select
+                                value={filters.status}
+                                onValueChange={(value) => handleFilterChange("status", value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="All statuses" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="All">All statuses</SelectItem>
+                                  {uniqueStatuses.map((status) => (
+                                    <SelectItem key={status} value={status}>
+                                      {status}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {/* Location Filter */}
+                            <div>
+                              <label className="text-sm font-medium">Location</label>
+                              <Select
+                                value={filters.location}
+                                onValueChange={(value) => handleFilterChange("location", value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="All locations" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="All">All locations</SelectItem>
+                                  {uniqueLocations.map((location) => (
+                                    <SelectItem key={location} value={location}>
+                                      {location}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {/* Supplier Filter */}
+                            <div>
+                              <label className="text-sm font-medium">Supplier</label>
+                              <Select
+                                value={filters.supplier}
+                                onValueChange={(value) => handleFilterChange("supplier", value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="All suppliers" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="All">All suppliers</SelectItem>
+                                  {uniqueSuppliers.map((supplier) => (
+                                    <SelectItem key={supplier} value={supplier}>
+                                      {supplier}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          {/* Quantity Range */}
+                          <div>
+                            <label className="text-sm font-medium">Quantity Range</label>
+                            <div className="flex gap-2 mt-1">
+                              <Input
+                                type="number"
+                                placeholder="Min"
+                                value={filters.minQuantity}
+                                onChange={(e) => handleFilterChange("minQuantity", e.target.value)}
+                              />
+                              <Input
+                                type="number"
+                                placeholder="Max"
+                                value={filters.maxQuantity}
+                                onChange={(e) => handleFilterChange("maxQuantity", e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Cost Range */}
+                          <div>
+                            <label className="text-sm font-medium">Cost per Unit Range (S$)</label>
+                            <div className="flex gap-2 mt-1">
+                              <Input
+                                type="number"
+                                placeholder="Min"
+                                value={filters.minCost}
+                                onChange={(e) => handleFilterChange("minCost", e.target.value)}
+                              />
+                              <Input
+                                type="number"
+                                placeholder="Max"
+                                value={filters.maxCost}
+                                onChange={(e) => handleFilterChange("maxCost", e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+
+                    {getActiveFilterCount() > 0 && (
+                      <Button variant="ghost" size="sm" onClick={clearFilters}>
+                        <X className="h-4 w-4 mr-1" />
+                        Clear
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <Button variant="outline">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Filter
-                </Button>
+
+                {/* Active Filters Display */}
+                {getActiveFilterCount() > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {searchTerm && (
+                      <Badge variant="secondary" className="flex items-center gap-1">
+                        Search: "{searchTerm}"
+                        <X className="h-3 w-3 cursor-pointer" onClick={() => setSearchTerm("")} />
+                      </Badge>
+                    )}
+                    {Object.entries(filters).map(([key, value]) => {
+                      if (!value || value === "All") return null
+                      const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, " $1")
+                      return (
+                        <Badge key={key} variant="secondary" className="flex items-center gap-1">
+                          {label}: {value}
+                          <X
+                            className="h-3 w-3 cursor-pointer"
+                            onClick={() => handleFilterChange(key as keyof Filters, "")}
+                          />
+                        </Badge>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -374,77 +652,88 @@ export default function InventoryPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item ID</TableHead>
-                      <TableHead>Item Name</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Quantity</TableHead>
-                      <TableHead>Stock Level</TableHead>
-                      <TableHead>Location</TableHead>
-                      <TableHead>Received Date</TableHead>
-                      <TableHead>Expiry Date</TableHead>
-                      <TableHead>Days to Expiry</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Value (S$)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredInventory.map((item) => {
-                      const stockPercentage = (item.quantity / item.maxStock) * 100
-                      const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+              {filteredInventory.length === 0 ? (
+                <div className="text-center py-8">
+                  <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No items match your filters</h3>
+                  <p className="text-gray-500 mb-4">Try adjusting your search or filter criteria</p>
+                  <Button variant="outline" onClick={clearFilters}>
+                    Clear all filters
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item ID</TableHead>
+                        <TableHead>Item Name</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead>Stock Level</TableHead>
+                        <TableHead>Location</TableHead>
+                        <TableHead>Received Date</TableHead>
+                        <TableHead>Expiry Date</TableHead>
+                        <TableHead>Days to Expiry</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Value (S$)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredInventory.map((item) => {
+                        const stockPercentage = (item.quantity / item.maxStock) * 100
+                        const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
 
-                      return (
-                        <TableRow
-                          key={item._id}
-                          className="cursor-pointer hover:bg-gray-50 transition-colors"
-                          onClick={() => handleRowClick(item.id)}
-                        >
-                          <TableCell className="font-medium">{item.id}</TableCell>
-                          <TableCell>{item.item}</TableCell>
-                          <TableCell>{item.category}</TableCell>
-                          <TableCell>
-                            {item.quantity} {item.unit}
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              <Progress value={stockPercentage} className="h-2" />
-                              <div className="text-xs text-gray-500">
-                                {item.quantity}/{item.maxStock} {item.unit}
+                        return (
+                          <TableRow
+                            key={item._id}
+                            className="cursor-pointer hover:bg-gray-50 transition-colors"
+                            onClick={() => handleRowClick(item.id)}
+                          >
+                            <TableCell className="font-medium">{item.id}</TableCell>
+                            <TableCell>{item.item}</TableCell>
+                            <TableCell>{item.category}</TableCell>
+                            <TableCell>
+                              {item.quantity} {item.unit}
+                            </TableCell>
+                            <TableCell>
+                              <div className="space-y-1">
+                                <Progress value={stockPercentage} className="h-2" />
+                                <div className="text-xs text-gray-500">
+                                  {item.quantity}/{item.maxStock} {item.unit}
+                                </div>
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{item.location}</TableCell>
-                          <TableCell>{item.receivedDate}</TableCell>
-                          <TableCell>{item.expiryDate}</TableCell>
-                          <TableCell>
-                            <span
-                              className={
-                                daysToExpiry < 0
-                                  ? "text-red-600 font-medium"
-                                  : daysToExpiry < 30
-                                    ? "text-orange-600 font-medium"
-                                    : "text-green-600"
-                              }
-                            >
-                              {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)} days overdue` : `${daysToExpiry} days`}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
-                              {getStatusIcon(item.status)}
-                              <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell>{(item.quantity * item.costPerUnit).toLocaleString()}</TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                            </TableCell>
+                            <TableCell>{item.location}</TableCell>
+                            <TableCell>{item.receivedDate}</TableCell>
+                            <TableCell>{item.expiryDate}</TableCell>
+                            <TableCell>
+                              <span
+                                className={
+                                  daysToExpiry < 0
+                                    ? "text-red-600 font-medium"
+                                    : daysToExpiry < 30
+                                      ? "text-orange-600 font-medium"
+                                      : "text-green-600"
+                                }
+                              >
+                                {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)} days overdue` : `${daysToExpiry} days`}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-2">
+                                {getStatusIcon(item.status)}
+                                <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell>{(item.quantity * item.costPerUnit).toLocaleString()}</TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
