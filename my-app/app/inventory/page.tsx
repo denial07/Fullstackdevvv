@@ -7,8 +7,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Search, Filter, Download, Package, AlertTriangle, Clock, TrendingDown, Loader2 } from "lucide-react"
+import {
+  ArrowLeft,
+  Search,
+  Filter,
+  Download,
+  Package,
+  AlertTriangle,
+  Clock,
+  TrendingDown,
+  Loader2,
+  RefreshCw,
+} from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 interface InventoryItem {
   _id: string
@@ -68,6 +80,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
+  const router = useRouter()
 
   useEffect(() => {
     fetchInventory()
@@ -76,17 +89,36 @@ export default function InventoryPage() {
   const fetchInventory = async () => {
     try {
       setLoading(true)
+      setError(null)
+
+      console.log("🔄 Fetching inventory directly...")
       const response = await fetch("/api/inventory")
+
       if (!response.ok) {
-        throw new Error("Failed to fetch inventory")
+        const errorData = await response.json()
+        throw new Error(`${errorData.error}: ${errorData.details || ""}`)
       }
+
       const data = await response.json()
-      setInventory(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred")
+
+      if (data.isEmpty) {
+        setError("No inventory data found. Please run the seeding script to populate the database.")
+        setInventory([])
+      } else {
+        setInventory(Array.isArray(data) ? data : [])
+        console.log("✅ Successfully loaded inventory data")
+      }
+    } catch (err: any) {
+      console.error("❌ Error fetching inventory:", err)
+      setError(err.message || "An error occurred while fetching inventory")
+      setInventory([])
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleRowClick = (itemId: string) => {
+    router.push(`/inventory/${itemId}`)
   }
 
   const filteredInventory = inventory.filter(
@@ -96,12 +128,21 @@ export default function InventoryPage() {
       item.location.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
+  const totalItems = inventory.length
+  const lowStockItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "low stock").length
+  const expiringSoonItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "expiring soon").length
+  const expiredItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "expired").length
+  const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.costPerUnit, 0)
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading inventory...</span>
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <div className="text-center">
+            <p className="text-lg font-medium">Loading inventory...</p>
+            <p className="text-sm text-gray-500">Connecting to database...</p>
+          </div>
         </div>
       </div>
     )
@@ -110,24 +151,46 @@ export default function InventoryPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-2xl">
           <CardHeader>
-            <CardTitle className="text-red-600">Error</CardTitle>
+            <CardTitle className="text-red-600 flex items-center">
+              <AlertTriangle className="h-5 w-5 mr-2" />
+              Database Connection Error
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <Button onClick={fetchInventory}>Try Again</Button>
+          <CardContent className="space-y-4">
+            <p className="text-gray-600">{error}</p>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-semibold text-blue-800 mb-2">Quick Fix Steps:</h4>
+              <ol className="list-decimal list-inside text-sm text-blue-700 space-y-1">
+                <li>Check your MongoDB Atlas connection string in .env.local</li>
+                <li>Verify your database user has proper permissions</li>
+                <li>Ensure your IP is whitelisted in Network Access</li>
+                <li>Try running the seeding script if database is empty</li>
+                <li>Check MongoDB Atlas cluster status</li>
+              </ol>
+            </div>
+
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <h4 className="font-semibold text-yellow-800 mb-2">Environment Check:</h4>
+              <p className="text-sm text-yellow-700">
+                Make sure your <code>.env.local</code> file contains:
+              </p>
+              <pre className="text-xs bg-yellow-100 p-2 rounded mt-2 overflow-x-auto">
+                MONGODB_URI=mongodb+srv://username:password@cluster.xxxxx.mongodb.net/database?retryWrites=true&w=majority
+              </pre>
+            </div>
+
+            <Button onClick={fetchInventory} className="w-full">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
           </CardContent>
         </Card>
       </div>
     )
   }
-
-  const totalItems = inventory.length
-  const lowStockItems = inventory.filter((item) => item.status === "Low Stock").length
-  const expiringSoonItems = inventory.filter((item) => item.status === "Expiring Soon").length
-  const expiredItems = inventory.filter((item) => item.status === "Expired").length
-  const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.costPerUnit, 0)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -211,142 +274,180 @@ export default function InventoryPage() {
           </Card>
         </div>
 
+        {/* Show message if no data */}
+        {inventory.length === 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Package className="h-5 w-5 mr-2 text-blue-500" />
+                No Inventory Data
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                No inventory items found in the database. Run the seeding script to populate with sample data.
+              </p>
+              <Button onClick={fetchInventory}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Critical Alerts */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <AlertTriangle className="h-5 w-5 mr-2 text-red-500" />
-              Critical Alerts
-            </CardTitle>
-            <CardDescription>Items requiring immediate attention</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {inventory
-                .filter((item) => item.status === "Expired" || item.status === "Expiring Soon")
-                .map((item) => (
-                  <div
-                    key={item._id}
-                    className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg"
-                  >
-                    <div className="flex items-center space-x-3">
-                      {getStatusIcon(item.status)}
-                      <div>
-                        <p className="font-medium">{item.item}</p>
-                        <p className="text-sm text-gray-600">
-                          {item.quantity} {item.unit} - Expires: {item.expiryDate}
-                        </p>
+        {inventory.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <AlertTriangle className="h-5 w-5 mr-2 text-red-500" />
+                Critical Alerts
+              </CardTitle>
+              <CardDescription>Items requiring immediate attention</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {inventory
+                  .filter(
+                    (item) =>
+                      item.status?.trim().toLowerCase() === "expired" ||
+                      item.status?.trim().toLowerCase() === "expiring soon",
+                  )
+                  .map((item) => (
+                    <div
+                      key={item._id}
+                      className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg cursor-pointer hover:bg-red-100 transition-colors"
+                      onClick={() => handleRowClick(item.id)}
+                    >
+                      <div className="flex items-center space-x-3">
+                        {getStatusIcon(item.status)}
+                        <div>
+                          <p className="font-medium">{item.item}</p>
+                          <p className="text-sm text-gray-600">
+                            {item.quantity} {item.unit} - Expires: {item.expiryDate}
+                          </p>
+                        </div>
                       </div>
+                      <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
                     </div>
-                    <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
-                  </div>
-                ))}
-            </div>
-          </CardContent>
-        </Card>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters and Search */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Search & Filter</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by item name, category, or location..."
-                    className="pl-10"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+        {inventory.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Search & Filter</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by item name, category, or location..."
+                      className="pl-10"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </div>
                 </div>
+                <Button variant="outline">
+                  <Filter className="h-4 w-4 mr-2" />
+                  Filter
+                </Button>
               </div>
-              <Button variant="outline">
-                <Filter className="h-4 w-4 mr-2" />
-                Filter
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Inventory Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>All Inventory Items</CardTitle>
-            <CardDescription>Complete wood inventory with stock levels and expiry tracking</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item ID</TableHead>
-                    <TableHead>Item Name</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Stock Level</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Received Date</TableHead>
-                    <TableHead>Expiry Date</TableHead>
-                    <TableHead>Days to Expiry</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Value (S$)</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredInventory.map((item) => {
-                    const stockPercentage = (item.quantity / item.maxStock) * 100
-                    const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+        {inventory.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>All Inventory Items</CardTitle>
+              <CardDescription>
+                Complete wood inventory with stock levels and expiry tracking (Click on any row to view details)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item ID</TableHead>
+                      <TableHead>Item Name</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Stock Level</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead>Received Date</TableHead>
+                      <TableHead>Expiry Date</TableHead>
+                      <TableHead>Days to Expiry</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Value (S$)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredInventory.map((item) => {
+                      const stockPercentage = (item.quantity / item.maxStock) * 100
+                      const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
 
-                    return (
-                      <TableRow key={item._id}>
-                        <TableCell className="font-medium">{item.id}</TableCell>
-                        <TableCell>{item.item}</TableCell>
-                        <TableCell>{item.category}</TableCell>
-                        <TableCell>
-                          {item.quantity} {item.unit}
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <Progress value={stockPercentage} className="h-2" />
-                            <div className="text-xs text-gray-500">
-                              {item.quantity}/{item.maxStock} {item.unit}
+                      return (
+                        <TableRow
+                          key={item._id}
+                          className="cursor-pointer hover:bg-gray-50 transition-colors"
+                          onClick={() => handleRowClick(item.id)}
+                        >
+                          <TableCell className="font-medium">{item.id}</TableCell>
+                          <TableCell>{item.item}</TableCell>
+                          <TableCell>{item.category}</TableCell>
+                          <TableCell>
+                            {item.quantity} {item.unit}
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <Progress value={stockPercentage} className="h-2" />
+                              <div className="text-xs text-gray-500">
+                                {item.quantity}/{item.maxStock} {item.unit}
+                              </div>
                             </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{item.location}</TableCell>
-                        <TableCell>{item.receivedDate}</TableCell>
-                        <TableCell>{item.expiryDate}</TableCell>
-                        <TableCell>
-                          <span
-                            className={
-                              daysToExpiry < 0
-                                ? "text-red-600 font-medium"
-                                : daysToExpiry < 30
-                                  ? "text-orange-600 font-medium"
-                                  : "text-green-600"
-                            }
-                          >
-                            {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)} days overdue` : `${daysToExpiry} days`}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            {getStatusIcon(item.status)}
-                            <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell>{(item.quantity * item.costPerUnit).toLocaleString()}</TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                          </TableCell>
+                          <TableCell>{item.location}</TableCell>
+                          <TableCell>{item.receivedDate}</TableCell>
+                          <TableCell>{item.expiryDate}</TableCell>
+                          <TableCell>
+                            <span
+                              className={
+                                daysToExpiry < 0
+                                  ? "text-red-600 font-medium"
+                                  : daysToExpiry < 30
+                                    ? "text-orange-600 font-medium"
+                                    : "text-green-600"
+                              }
+                            >
+                              {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)} days overdue` : `${daysToExpiry} days`}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              {getStatusIcon(item.status)}
+                              <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell>{(item.quantity * item.costPerUnit).toLocaleString()}</TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Storage Locations */}
         <Card className="mt-6">
