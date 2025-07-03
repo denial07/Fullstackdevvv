@@ -1,6 +1,9 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,6 +24,10 @@ import {
   RefreshCw,
   X,
   SlidersHorizontal,
+  Edit3,
+  Check,
+  XCircle,
+  Trash2,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -105,6 +112,14 @@ export default function InventoryPage() {
     maxCost: "",
   })
   const [showFilters, setShowFilters] = useState(false)
+  const [editingStock, setEditingStock] = useState<{ [key: string]: boolean }>({})
+  const [editingValues, setEditingValues] = useState<{ [key: string]: number }>({})
+  const [savingStock, setSavingStock] = useState<{ [key: string]: boolean }>({})
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; item: InventoryItem | null }>({
+    open: false,
+    item: null,
+  })
+  const [deletingItem, setDeletingItem] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -142,7 +157,11 @@ export default function InventoryPage() {
     }
   }
 
-  const handleRowClick = (itemId: string) => {
+  const handleRowClick = (itemId: string, event: React.MouseEvent) => {
+    // Don't navigate if clicking on edit controls
+    if ((event.target as HTMLElement).closest(".edit-controls")) {
+      return
+    }
     router.push(`/inventory/${itemId}`)
   }
 
@@ -166,6 +185,117 @@ export default function InventoryPage() {
 
   const getActiveFilterCount = () => {
     return Object.values(filters).filter((value) => value !== "").length + (searchTerm ? 1 : 0)
+  }
+
+  const startEditingStock = (itemId: string, currentQuantity: number) => {
+    setEditingStock((prev) => ({ ...prev, [itemId]: true }))
+    setEditingValues((prev) => ({ ...prev, [itemId]: currentQuantity }))
+  }
+
+  const cancelEditingStock = (itemId: string) => {
+    setEditingStock((prev) => ({ ...prev, [itemId]: false }))
+    setEditingValues((prev) => {
+      const newValues = { ...prev }
+      delete newValues[itemId]
+      return newValues
+    })
+  }
+
+  const saveStockLevel = async (itemId: string, itemName: string) => {
+    const newQuantity = editingValues[itemId]
+
+    if (newQuantity === undefined || newQuantity < 0) {
+      toast.error("Invalid quantity", {
+        description: "Please enter a valid quantity (0 or greater)",
+      })
+      return
+    }
+
+    setSavingStock((prev) => ({ ...prev, [itemId]: true }))
+
+    try {
+      // Make API call to update the database
+      const response = await fetch(`/api/inventory/${itemId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          quantity: newQuantity,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to update stock")
+      }
+
+      const updatedItem = await response.json()
+
+      // Update local state with the response from the database
+      setInventory((prev) =>
+        prev.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                quantity: updatedItem.quantity,
+                status: updatedItem.status,
+              }
+            : item,
+        ),
+      )
+
+      // Exit edit mode
+      setEditingStock((prev) => ({ ...prev, [itemId]: false }))
+      setEditingValues((prev) => {
+        const newValues = { ...prev }
+        delete newValues[itemId]
+        return newValues
+      })
+
+      toast.success("Stock updated successfully! 📦", {
+        description: `${itemName} quantity updated to ${newQuantity} in database`,
+      })
+    } catch (error: any) {
+      console.error("Error updating stock:", error)
+      toast.error("Failed to update stock", {
+        description: error.message || "Please try again or contact support",
+      })
+    } finally {
+      setSavingStock((prev) => ({ ...prev, [itemId]: false }))
+    }
+  }
+
+  const deleteItem = async (item: InventoryItem) => {
+    setDeletingItem(item.id)
+
+    try {
+      const response = await fetch(`/api/inventory/${item.id}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to delete item")
+      }
+
+      // Remove item from local state
+      setInventory((prev) => prev.filter((inventoryItem) => inventoryItem.id !== item.id))
+
+      // Close dialog
+      setDeleteDialog({ open: false, item: null })
+
+      toast.success("Item deleted successfully! 🗑️", {
+        description: `${item.item} has been removed from inventory`,
+      })
+    } catch (error: any) {
+      console.error("Error deleting item:", error)
+      toast.error("Failed to delete item", {
+        description: error.message || "Please try again or contact support",
+      })
+    } finally {
+      setDeletingItem(null)
+    }
   }
 
   // Get unique values for filter dropdowns
@@ -407,7 +537,7 @@ export default function InventoryPage() {
                     <div
                       key={item._id}
                       className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg cursor-pointer hover:bg-red-100 transition-colors"
-                      onClick={() => handleRowClick(item.id)}
+                      onClick={(e) => handleRowClick(item.id, e)}
                     >
                       <div className="flex items-center space-x-3">
                         {getStatusIcon(item.status)}
@@ -648,7 +778,8 @@ export default function InventoryPage() {
             <CardHeader>
               <CardTitle>All Inventory Items</CardTitle>
               <CardDescription>
-                Complete wood inventory with stock levels and expiry tracking (Click on any row to view details)
+                Complete wood inventory with stock levels and expiry tracking (Click on any row to view details, or edit
+                stock levels inline)
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -677,24 +808,93 @@ export default function InventoryPage() {
                         <TableHead>Days to Expiry</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Value (S$)</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredInventory.map((item) => {
                         const stockPercentage = (item.quantity / item.maxStock) * 100
                         const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+                        const isEditing = editingStock[item.id]
+                        const isSaving = savingStock[item.id]
 
                         return (
                           <TableRow
                             key={item._id}
                             className="cursor-pointer hover:bg-gray-50 transition-colors"
-                            onClick={() => handleRowClick(item.id)}
+                            onClick={(e) => handleRowClick(item.id, e)}
                           >
                             <TableCell className="font-medium">{item.id}</TableCell>
                             <TableCell>{item.item}</TableCell>
                             <TableCell>{item.category}</TableCell>
                             <TableCell>
-                              {item.quantity} {item.unit}
+                              <div className="edit-controls flex items-center space-x-2">
+                                {isEditing ? (
+                                  <div className="flex items-center space-x-2">
+                                    <Input
+                                      type="number"
+                                      value={editingValues[item.id] || 0}
+                                      onChange={(e) =>
+                                        setEditingValues((prev) => ({
+                                          ...prev,
+                                          [item.id]: Number.parseInt(e.target.value) || 0,
+                                        }))
+                                      }
+                                      className="w-20 h-8"
+                                      min="0"
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                    <span className="text-sm text-gray-500">{item.unit}</span>
+                                    <div className="flex space-x-1">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-8 w-8 p-0"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          saveStockLevel(item.id, item.item)
+                                        }}
+                                        disabled={isSaving}
+                                      >
+                                        {isSaving ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Check className="h-4 w-4 text-green-600" />
+                                        )}
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-8 w-8 p-0"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          cancelEditingStock(item.id)
+                                        }}
+                                        disabled={isSaving}
+                                      >
+                                        <XCircle className="h-4 w-4 text-red-600" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center space-x-2">
+                                    <span>
+                                      {item.quantity} {item.unit}
+                                    </span>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        startEditingStock(item.id, item.quantity)
+                                      }}
+                                    >
+                                      <Edit3 className="h-4 w-4 text-blue-600" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <div className="space-y-1">
@@ -727,6 +927,22 @@ export default function InventoryPage() {
                               </div>
                             </TableCell>
                             <TableCell>{(item.quantity * item.costPerUnit).toLocaleString()}</TableCell>
+                            <TableCell>
+                              <div className="edit-controls flex items-center space-x-2">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setDeleteDialog({ open: true, item })
+                                  }}
+                                  title="Delete item"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
                           </TableRow>
                         )
                       })}
@@ -768,6 +984,81 @@ export default function InventoryPage() {
           </CardContent>
         </Card>
       </main>
+
+      {/* Delete Confirmation Dialog */}
+      {deleteDialog.open && deleteDialog.item && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center mb-4">
+              <AlertTriangle className="h-5 w-5 mr-2 text-red-600" />
+              <h3 className="text-lg font-semibold">Confirm Deletion</h3>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <p>Are you sure you want to delete this item? This action cannot be undone.</p>
+
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span className="font-medium">Item ID:</span>
+                  <span>{deleteDialog.item.id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Name:</span>
+                  <span>{deleteDialog.item.item}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Category:</span>
+                  <span>{deleteDialog.item.category}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Current Stock:</span>
+                  <span>
+                    {deleteDialog.item.quantity} {deleteDialog.item.unit}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Value:</span>
+                  <span className="text-red-600 font-semibold">
+                    S${(deleteDialog.item.quantity * deleteDialog.item.costPerUnit).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-600">
+                This will permanently remove the item from your inventory database.
+              </p>
+            </div>
+
+            <div className="flex space-x-3">
+              <Button
+                onClick={() => setDeleteDialog({ open: false, item: null })}
+                disabled={deletingItem === deleteDialog.item.id}
+                className="flex-1"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => deleteItem(deleteDialog.item!)}
+                disabled={deletingItem === deleteDialog.item.id}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+              >
+                {deletingItem === deleteDialog.item.id ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Item
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
