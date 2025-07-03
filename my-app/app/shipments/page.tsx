@@ -1,4 +1,8 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { connectToDatabase } from "@/lib/mongodb"
+import Shipment from "@/lib/models/Shipment"
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -6,7 +10,29 @@ import { ArrowLeft, Ship, Truck, Plus } from "lucide-react"
 import Link from "next/link"
 import { UserNav } from "@/components/user-nav"
 
-export default function ShipmentsPage() {
+export default async function ShipmentsPage() {
+  await connectToDatabase()
+  const rawShipments = await Shipment.find().lean()
+
+  const incoming = rawShipments.filter((s) => s.type === "incoming")
+  const outgoing = rawShipments.filter((s) => s.type === "outgoing")
+
+  const incomingTotal = incoming.length
+  const incomingDelayed = incoming.filter((s) => s.status === "Delayed").length
+  const incomingValue = incoming.reduce((sum, s) => sum + (s.price || 0), 0)
+
+  const outgoingTotal = outgoing.length
+  const outgoingPreparing = outgoing.filter((s) => ["Preparing", "Scheduled"].includes(s.status)).length
+  const outgoingValue = outgoing.reduce((sum, s) => sum + (s.price || 0), 0)
+
+  const combinedValue = incomingValue + outgoingValue
+  const totalThisMonth = rawShipments.length // optionally filter by date if needed
+
+
+
+  // Sort and get latest 3
+
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -45,8 +71,8 @@ export default function ShipmentsPage() {
               <Ship className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">18</div>
-              <p className="text-xs text-muted-foreground">3 delayed</p>
+              <div className="text-2xl font-bold">{incomingTotal}</div>
+              <p className="text-xs text-muted-foreground">{incomingDelayed} delayed</p>
             </CardContent>
           </Card>
 
@@ -56,8 +82,8 @@ export default function ShipmentsPage() {
               <Truck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">24</div>
-              <p className="text-xs text-muted-foreground">6 pending</p>
+              <div className="text-2xl font-bold">{outgoingTotal}</div>
+              <p className="text-xs text-muted-foreground">{outgoingPreparing} preparing</p>
             </CardContent>
           </Card>
 
@@ -66,7 +92,7 @@ export default function ShipmentsPage() {
               <CardTitle className="text-sm font-medium">Total Value</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">S$401,000</div>
+              <div className="text-2xl font-bold">S${combinedValue.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">Combined value</p>
             </CardContent>
           </Card>
@@ -76,13 +102,14 @@ export default function ShipmentsPage() {
               <CardTitle className="text-sm font-medium">This Month</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">42</div>
+              <div className="text-2xl font-bold">{totalThisMonth}</div>
               <p className="text-xs text-muted-foreground">Total shipments</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Shipment Tabs */}
+
+
         <Tabs defaultValue="incoming" className="space-y-6">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="incoming">Incoming Shipments</TabsTrigger>
@@ -105,41 +132,35 @@ export default function ShipmentsPage() {
                     <Link href="/shipments/incoming">View Detailed Incoming</Link>
                   </Button>
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">SH-IN-001</span>
-                      <Badge variant="secondary">In Transit</Badge>
+                  {incoming.map((shipment) => (
+                    <div key={String(shipment._id)} className="p-4 border rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">{shipment.id}</span>
+                        <Badge variant={
+                          shipment.status === "Delayed"
+                            ? "destructive"
+                            : shipment.status === "In Transit"
+                              ? "secondary"
+                              : "default"
+                        }>
+                          {shipment.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600">{shipment.supplier}</p>
+                      <p className="text-xs text-gray-500">{shipment.description}</p>
+                      <p className="text-xs text-gray-500">
+                        ETA: {new Date(shipment.shippingDate).toLocaleDateString()}
+                      </p>
+                      <p className="font-medium mt-2">S${(shipment.price || 0).toLocaleString()}</p>
                     </div>
-                    <p className="text-sm text-gray-600">Malaysian Timber Co.</p>
-                    <p className="text-xs text-gray-500">Teak Wood - 50m³</p>
-                    <p className="text-xs text-gray-500">ETA: Jan 15, 2024</p>
-                    <p className="font-medium mt-2">S$15,000</p>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">SH-IN-002</span>
-                      <Badge variant="destructive">Delayed</Badge>
-                    </div>
-                    <p className="text-sm text-gray-600">Indonesian Wood Supply</p>
-                    <p className="text-xs text-gray-500">Pine Wood - 75m³</p>
-                    <p className="text-xs text-gray-500">ETA: Jan 12, 2024 (3 days late)</p>
-                    <p className="font-medium mt-2">S$22,000</p>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">SH-IN-003</span>
-                      <Badge variant="default">Arrived</Badge>
-                    </div>
-                    <p className="text-sm text-gray-600">Thai Forest Products</p>
-                    <p className="text-xs text-gray-500">Oak Wood - 40m³</p>
-                    <p className="text-xs text-gray-500">Arrived: Jan 8, 2024</p>
-                    <p className="font-medium mt-2">S$18,500</p>
-                  </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
+
 
           <TabsContent value="outgoing">
             <Card>
@@ -157,42 +178,44 @@ export default function ShipmentsPage() {
                     <Link href="/shipments/outgoing">View Detailed Outgoing</Link>
                   </Button>
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">SH-OUT-001</span>
-                      <Badge variant="default">Delivered</Badge>
+                  {outgoing.map((shipment) => (
+                    <div key={String(shipment._id)} className="p-4 border rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">{shipment.id}</span>
+                        <Badge variant={
+                          shipment.status === "Preparing"
+                            ? "outline"
+                            : shipment.status === "Delivered"
+                              ? "default"
+                              : "secondary"
+                        }>
+                          {shipment.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600">{shipment.customer}</p>
+                      <p className="text-xs text-gray-500">{shipment.description}</p>
+                      <p className="text-xs text-gray-500">
+                        {shipment.status === "Delivered"
+                          ? "Delivered:"
+                          : shipment.status === "Preparing"
+                            ? "Scheduled:"
+                            : "ETA:"}{" "}
+                        {new Date(shipment.shippingDate).toLocaleDateString()}
+                      </p>
+                      <p className="font-medium mt-2">S${(shipment.price || 0).toLocaleString()}</p>
                     </div>
-                    <p className="text-sm text-gray-600">ABC Logistics Pte Ltd</p>
-                    <p className="text-xs text-gray-500">Standard Pallets x 500</p>
-                    <p className="text-xs text-gray-500">Delivered: Jan 10, 2024</p>
-                    <p className="font-medium mt-2">S$12,500</p>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">SH-OUT-002</span>
-                      <Badge variant="secondary">In Transit</Badge>
-                    </div>
-                    <p className="text-sm text-gray-600">Singapore Shipping Co.</p>
-                    <p className="text-xs text-gray-500">Heavy Duty Pallets x 200</p>
-                    <p className="text-xs text-gray-500">ETA: Jan 14, 2024</p>
-                    <p className="font-medium mt-2">S$8,900</p>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">SH-OUT-003</span>
-                      <Badge variant="outline">Preparing</Badge>
-                    </div>
-                    <p className="text-sm text-gray-600">Maritime Solutions Ltd</p>
-                    <p className="text-xs text-gray-500">Custom Pallets x 150</p>
-                    <p className="text-xs text-gray-500">Scheduled: Jan 16, 2024</p>
-                    <p className="font-medium mt-2">S$6,750</p>
-                  </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
+
         </Tabs>
+
+
+
       </main>
     </div>
   )
