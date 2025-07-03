@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useRouter } from "next/navigation"
 
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -72,17 +73,40 @@ export default function AddShipmentPage() {
     const calculateTotal = () => {
         return items.reduce((total, item) => total + item.quantity * item.unitPrice, 0)
     }
+    const router = useRouter()
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        setIsLoading(true)
+        e.preventDefault();
+        setIsLoading(true);
 
-        // Simulate API call
-        setTimeout(() => {
-            alert("Shipment added successfully!")
-            setIsLoading(false)
-        }, 1500)
-    }
+        const payload = {
+            id: formData.shipmentId || `SH-${shipmentType === "incoming" ? "IN" : "OUT"}-${Date.now()}`,
+            type: shipmentType,
+            vendor: formData.vendor || "",           // only if incoming
+            customer: formData.customer || "",       // only if outgoing
+            description: items.map((i) => `${i.description} x ${i.quantity}`).join(", "),
+            status: shipmentType === "incoming" ? "In Transit" : "Preparing",
+            arrival: expectedDate?.toISOString(),    // matches "arrival" field
+            price: calculateTotal(),
+        };
+
+        const res = await fetch("/api/shipments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+            const error = await res.json();
+            console.error("❌ Shipment create failed:", error);
+            throw new Error("Failed to create shipment");
+        }
+
+        const createdShipment = await res.json();
+        console.log("✅ Shipment saved:", createdShipment);
+        setIsLoading(false);
+    };
+
 
     return (
         <div className="min-h-screen bg-gray-50">

@@ -9,8 +9,15 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-    const body = await req.json();
-    await connectToDatabase();
-    const newShipment = await Shipment.create(body);
-    return NextResponse.json(newShipment, { status: 201 });
+    try {
+        const data = await req.json();
+        console.log("🚚 Received shipment data:", data); // log incoming
+
+        await connectToDatabase();
+        const newShipment = await Shipment.create(data);
+        return NextResponse.json(newShipment, { status: 201 });
+    } catch (error) {
+        console.error("❌ Error creating shipment:", error);
+        return NextResponse.json({ error: "Failed to create shipment" }, { status: 500 });
+    }
 }
