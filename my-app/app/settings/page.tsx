@@ -67,13 +67,37 @@ export default function SettingsPage() {
   })
 
   useEffect(() => {
-    // Load user data from localStorage for display purposes only
+    // Load user data from localStorage for display purposes
     const userData = localStorage.getItem("user")
     if (userData) {
       const parsedUser = JSON.parse(userData)
       setUser(parsedUser)
-      // Don't pre-fill the form - let users enter fresh data
     }
+
+    // Load profile data from database to pre-fill form
+    const loadProfileFromDatabase = async () => {
+      try {
+        const response = await fetch('/api/user/profile')
+        const data = await response.json()
+
+        if (response.ok) {
+          // Pre-fill the form with existing database data
+          setProfileForm({
+            name: data.user.name || "",
+            email: data.user.email || "",
+            phone: data.user.phone || "",
+            department: data.user.department || "",
+            bio: data.user.bio || "",
+          })
+        } else {
+          console.log("Could not load profile data:", data.error)
+        }
+      } catch (error) {
+        console.error("Failed to load profile data:", error)
+      }
+    }
+
+    loadProfileFromDatabase()
   }, [])
 
   const handleProfileSave = async () => {
