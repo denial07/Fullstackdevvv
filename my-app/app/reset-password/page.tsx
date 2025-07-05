@@ -55,25 +55,30 @@ export default function ResetPasswordPage() {
     }
 
     validateToken()
-  }, [token, email])
 
-  // Countdown timer
-  useEffect(() => {
-    if (timeRemaining === null || timeRemaining <= 0) return
+    // Set up interval to refresh countdown from API
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/reset-password/validate?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`)
+        const data = await response.json()
 
-    const timer = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev === null || prev <= 1000) {
+        if (response.ok && data.isValid) {
+          setTimeRemaining(data.timeRemaining)
+        } else {
           setIsValidToken(false)
-          setError("Reset link has expired. Please request a new password reset.")
-          return 0
+          setError(data.error || "Reset link has expired or is invalid")
+          clearInterval(interval)
         }
-        return prev - 1000
-      })
+      } catch (error) {
+        console.error("Token validation error:", error)
+        setIsValidToken(false)
+        setError("Failed to validate reset link")
+        clearInterval(interval)
+      }
     }, 1000)
 
-    return () => clearInterval(timer)
-  }, [timeRemaining])
+    return () => clearInterval(interval)
+  }, [token, email])
 
   // Format time remaining for display
   const formatTimeRemaining = (ms: number) => {
