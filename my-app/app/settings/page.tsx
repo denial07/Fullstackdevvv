@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -66,35 +67,73 @@ export default function SettingsPage() {
   })
 
   useEffect(() => {
-    // Load user data from localStorage (in real app, this would be from API)
+    // Load user data from localStorage for display purposes only
     const userData = localStorage.getItem("user")
     if (userData) {
       const parsedUser = JSON.parse(userData)
       setUser(parsedUser)
-      setProfileForm({
-        name: parsedUser.name || "",
-        email: parsedUser.email || "",
-        phone: parsedUser.phone || "",
-        department: parsedUser.department || "Operations",
-        bio: parsedUser.bio || "",
-      })
+      // Don't pre-fill the form - let users enter fresh data
     }
   }, [])
 
   const handleProfileSave = async () => {
     setIsLoading(true)
+    setSaveMessage("")
+    
+    // Validate required fields
+    if (!profileForm.name.trim()) {
+      setSaveMessage("Name is required")
+      setIsLoading(false)
+      return
+    }
+    
+    if (!profileForm.email.trim()) {
+      setSaveMessage("Email is required")
+      setIsLoading(false)
+      return
+    }
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await fetch('/api/user/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: profileForm.name.trim(),
+          email: profileForm.email.trim(),
+          phone: profileForm.phone.trim() || undefined,
+          department: profileForm.department.trim() || undefined,
+          bio: profileForm.bio.trim() || undefined
+        }),
+      })
 
-      // Update user data in localStorage (in real app, this would be an API call)
-      const updatedUser = { ...user, ...profileForm }
-      localStorage.setItem("user", JSON.stringify(updatedUser))
-      setUser(updatedUser)
+      const data = await response.json()
 
-      setSaveMessage("Profile updated successfully!")
-      setTimeout(() => setSaveMessage(""), 3000)
-    } catch (error) {
-      setSaveMessage("Failed to update profile. Please try again.")
+      if (response.ok) {
+        setSaveMessage("Profile saved successfully!")
+        
+        // Update localStorage with new user data
+        if (user) {
+          const updatedUser = {
+            ...user,
+            name: data.user.name,
+            email: data.user.email,
+            phone: data.user.phone,
+            department: data.user.department
+          }
+          localStorage.setItem("user", JSON.stringify(updatedUser))
+          setUser(updatedUser)
+        }
+        
+        setTimeout(() => setSaveMessage(""), 3000)
+        console.log("✅ Profile saved successfully")
+      } else {
+        setSaveMessage(data.error || "Failed to save profile")
+      }
+    } catch (err) {
+      console.error("Profile save error:", err)
+      setSaveMessage("Failed to save profile. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -121,7 +160,7 @@ export default function SettingsPage() {
         confirmPassword: "",
       })
       setTimeout(() => setSaveMessage(""), 3000)
-    } catch (error) {
+    } catch {
       setSaveMessage("Failed to change password. Please try again.")
     } finally {
       setIsLoading(false)
@@ -231,22 +270,24 @@ export default function SettingsPage() {
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Full Name</Label>
+                    <Label htmlFor="name">Full Name *</Label>
                     <Input
                       id="name"
                       value={profileForm.name}
                       onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
                       placeholder="Enter your full name"
+                      required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email Address</Label>
+                    <Label htmlFor="email">Email Address *</Label>
                     <Input
                       id="email"
                       type="email"
                       value={profileForm.email}
                       onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                      placeholder="Enter your email"
+                      placeholder="Enter your email address"
+                      required
                     />
                   </div>
                   <div className="space-y-2">
@@ -260,12 +301,21 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="department">Department</Label>
-                    <Input
-                      id="department"
-                      value={profileForm.department}
-                      onChange={(e) => setProfileForm({ ...profileForm, department: e.target.value })}
-                      placeholder="Enter your department"
-                    />
+                    <Select value={profileForm.department} onValueChange={(value) => setProfileForm({ ...profileForm, department: value })}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select your department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Operations">Operations</SelectItem>
+                        <SelectItem value="Logistics">Logistics</SelectItem>
+                        <SelectItem value="Sales">Sales</SelectItem>
+                        <SelectItem value="Finance">Finance</SelectItem>
+                        <SelectItem value="HR">HR</SelectItem>
+                        <SelectItem value="IT">IT</SelectItem>
+                        <SelectItem value="Management">Management</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -274,13 +324,17 @@ export default function SettingsPage() {
                     id="bio"
                     value={profileForm.bio}
                     onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })}
-                    placeholder="Tell us about yourself..."
+                    placeholder="Tell us about yourself, your role, and experience..."
                     rows={3}
+                    maxLength={500}
                   />
+                  <p className="text-sm text-gray-500">
+                    {profileForm.bio.length}/500 characters
+                  </p>
                 </div>
-                <Button onClick={handleProfileSave} disabled={isLoading}>
+                <Button onClick={handleProfileSave} disabled={isLoading || !profileForm.name.trim() || !profileForm.email.trim()}>
                   <Save className="h-4 w-4 mr-2" />
-                  {isLoading ? "Saving..." : "Save Changes"}
+                  {isLoading ? "Saving..." : "Save Profile"}
                 </Button>
               </CardContent>
             </Card>
