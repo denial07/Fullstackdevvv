@@ -169,22 +169,39 @@ export default function SettingsPage() {
       return
     }
 
-    if (passwordForm.newPassword.length < 8) {
-      setSaveMessage("Password must be at least 8 characters long.")
+    if (passwordForm.newPassword.length < 6) {
+      setSaveMessage("Password must be at least 6 characters long.")
       return
     }
 
     setIsLoading(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      setSaveMessage("Password changed successfully!")
-      setPasswordForm({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
+      const response = await fetch('/api/change-password', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
       })
-      setTimeout(() => setSaveMessage(""), 3000)
-    } catch {
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSaveMessage("Password changed successfully!")
+        setPasswordForm({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        })
+        setTimeout(() => setSaveMessage(""), 3000)
+      } else {
+        setSaveMessage(data.error || "Failed to change password.")
+      }
+    } catch (error) {
+      console.error("Password change error:", error)
       setSaveMessage("Failed to change password. Please try again.")
     } finally {
       setIsLoading(false)
