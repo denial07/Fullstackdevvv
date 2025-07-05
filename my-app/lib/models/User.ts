@@ -6,6 +6,9 @@ export interface IUser extends Document {
   name: string;
   role: string;
   company: string;
+  phone?: string;
+  department?: string;
+  bio?: string;
   resetPasswordToken?: string;
   resetPasswordExpiry?: Date;
   createdAt: Date;
@@ -44,6 +47,27 @@ const UserSchema = new Schema<IUser>({
   company: {
     type: String,
     default: 'Singapore Pallet Works'
+  },
+  phone: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function(phone: string) {
+        // Allow empty/undefined or valid phone formats
+        return !phone || /^[\+]?[1-9][\d]{0,15}$/.test(phone.replace(/[\s\-\(\)]/g, ''));
+      },
+      message: 'Please enter a valid phone number'
+    }
+  },
+  department: {
+    type: String,
+    enum: ['Operations', 'Logistics', 'Sales', 'Finance', 'HR', 'IT', 'Management', 'Other'],
+    trim: true
+  },
+  bio: {
+    type: String,
+    maxlength: [500, 'Bio cannot exceed 500 characters'],
+    trim: true
   },
   resetPasswordToken: {
     type: String,
