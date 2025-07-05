@@ -1,23 +1,34 @@
 import { connectToDatabase } from "@/lib/mongodb";
 import User from "@/lib/models/User";
 import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import crypto from "crypto";
 
-// Function to hash reset token (same as in other routes)
+// Function to hash reset token (same as in reset route)
 function hashResetToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-// GET /api/reset-password/validate - Check if reset token is valid and get expiry
-export async function GET(req: NextRequest) {
+// POST /api/reset-password - Reset password with token
+export async function POST(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const token = searchParams.get('token');
-    const email = searchParams.get('email');
+    const { token, email, newPassword } = await req.json();
 
-    if (!token || !email) {
+    // Validate input
+    if (!token || !email || !newPassword) {
       return NextResponse.json(
-        { error: "Token and email are required" },
+        { error: "Token, email, and new password are required" },
+        { status: 400 }
+      );
+    }
+    
+    // Clean up token - remove any potential URL encoding issues
+    const cleanToken = decodeURIComponent(token.trim());
+
+    // Validate password strength
+    if (newPassword.length < 6) {
+      return NextResponse.json(
+        { error: "Password must be at least 6 characters long" },
         { status: 400 }
       );
     }
@@ -26,37 +37,47 @@ export async function GET(req: NextRequest) {
     await connectToDatabase();
 
     // Hash the provided token to match stored hash
-    const hashedToken = hashResetToken(token);
+    const hashedToken = hashResetToken(cleanToken);
 
-    // Find user with matching email and reset token (don't check expiry yet)
+    // Find user with matching email and valid reset token
     const user = await User.findOne({
       email: email.toLowerCase().trim(),
-      resetPasswordToken: hashedToken
+      resetPasswordToken: hashedToken,
+      resetPasswordExpiry: { $gt: new Date() } // Token must not be expired
     });
 
-    if (!user || !user.resetPasswordExpiry) {
+    if (!user) {
+      console.log("🔍 Invalid or expired reset token for:", email);
       return NextResponse.json(
-        { error: "Invalid reset token" },
+        { error: "Invalid or expired reset token" },
         { status: 400 }
       );
     }
 
-    const now = new Date();
-    const expiry = new Date(user.resetPasswordExpiry);
-    const isExpired = now > expiry;
-    const timeRemaining = isExpired ? 0 : expiry.getTime() - now.getTime();
+    console.log("🔑 Valid reset token found for:", email);
 
-    return NextResponse.json({
-      isValid: !isExpired,
-      expiryTime: expiry.toISOString(),
-      timeRemaining: Math.max(0, timeRemaining),
-      currentTime: now.toISOString()
+    // Hash the new password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update user password and clear reset token fields
+    await User.findByIdAndUpdate(user._id, {
+      password: hashedPassword,
+      resetPasswordToken: undefined,
+      resetPasswordExpiry: undefined
     });
 
+    console.log("✅ Password updated successfully for:", email);
+
+    return NextResponse.json({
+      message: "Password reset successful",
+      success: true
+    }, { status: 200 });
+
   } catch (error) {
-    console.error("❌ Token validation error:", error);
+    console.error("❌ Password reset error:", error);
     return NextResponse.json(
-      { error: "Failed to validate token" },
+      { error: "Failed to reset password" },
       { status: 500 }
     );
   }
