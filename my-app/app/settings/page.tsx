@@ -25,8 +25,20 @@ interface UserData {
   joinDate?: string
 }
 
+interface CompanyData {
+  companyName: string
+  registrationNumber: string
+  industry: string
+  established: number
+  address: string
+  phone: string
+  email: string
+}
+
 export default function SettingsPage() {
   const [user, setUser] = useState<UserData | null>(null)
+  const [company, setCompany] = useState<CompanyData | null>(null)
+  const [isLoadingCompany, setIsLoadingCompany] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
@@ -97,7 +109,31 @@ export default function SettingsPage() {
       }
     }
 
+    // Load company data from database
+    const loadCompanyFromDatabase = async () => {
+      try {
+        console.log("🏢 Fetching company data...");
+        setIsLoadingCompany(true);
+        const response = await fetch('/api/company')
+        const data = await response.json()
+
+        console.log("📊 Company API response:", { response: response.ok, data });
+
+        if (response.ok) {
+          setCompany(data.company)
+          console.log("✅ Company data loaded:", data.company);
+        } else {
+          console.log("❌ Could not load company data:", data.error)
+        }
+      } catch (error) {
+        console.error("❌ Failed to load company data:", error)
+      } finally {
+        setIsLoadingCompany(false);
+      }
+    }
+
     loadProfileFromDatabase()
+    loadCompanyFromDatabase()
   }, [])
 
   const handleProfileSave = async () => {
@@ -597,45 +633,62 @@ export default function SettingsPage() {
                 <CardDescription>View and manage company details</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label>Company Name</Label>
-                    <Input value="Singapore Pallet Works" disabled />
+                {isLoadingCompany ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">Loading company information...</p>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Registration Number</Label>
-                    <Input value="201234567K" disabled />
+                ) : company ? (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label>Company Name</Label>
+                        <Input value={company.companyName || ""} disabled />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Registration Number</Label>
+                        <Input value={company.registrationNumber || ""} disabled />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Industry</Label>
+                        <Input value={company.industry || ""} disabled />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Established</Label>
+                        <Input value={company.established?.toString() || ""} disabled />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Address</Label>
+                      <Textarea value={company.address || ""} disabled rows={2} />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label>Phone</Label>
+                        <Input value={company.phone || ""} disabled />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Email</Label>
+                        <Input value={company.email || ""} disabled />
+                      </div>
+                    </div>
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Company information can only be updated by administrators. Contact your system administrator for
+                        changes.
+                      </AlertDescription>
+                    </Alert>
+                  </>
+                ) : (
+                  <div className="text-center py-8">
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        No company information found. Please contact your administrator.
+                      </AlertDescription>
+                    </Alert>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Industry</Label>
-                    <Input value="Wood Manufacturing & Logistics" disabled />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Established</Label>
-                    <Input value="2018" disabled />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Address</Label>
-                  <Textarea value="123 Industrial Park Road, Singapore 628123" disabled rows={2} />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label>Phone</Label>
-                    <Input value="+65 6123 4567" disabled />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input value="info@palletworks.sg" disabled />
-                  </div>
-                </div>
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Company information can only be updated by administrators. Contact your system administrator for
-                    changes.
-                  </AlertDescription>
-                </Alert>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
