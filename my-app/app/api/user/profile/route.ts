@@ -46,7 +46,8 @@ export async function GET(req: NextRequest) {
         company: user.company,
         phone: user.phone || '',
         department: user.department || '',
-        bio: user.bio || ''
+        bio: user.bio || '',
+        twoFactorEnabled: user.twoFactorEnabled || false
       }
     });
 
@@ -132,6 +133,13 @@ export async function PUT(req: NextRequest) {
       });
     }
 
+    if (!savedUser) {
+      return NextResponse.json(
+        { error: "Failed to save profile" },
+        { status: 500 }
+      );
+    }
+
     console.log("✅ Profile saved successfully for:", savedUser.email);
 
     return NextResponse.json({
@@ -144,7 +152,8 @@ export async function PUT(req: NextRequest) {
         company: savedUser.company,
         phone: savedUser.phone || '',
         department: savedUser.department || '',
-        bio: savedUser.bio || ''
+        bio: savedUser.bio || '',
+        twoFactorEnabled: savedUser.twoFactorEnabled || false
       }
     });
 
