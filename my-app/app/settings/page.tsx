@@ -78,6 +78,13 @@ export default function SettingsPage() {
     loginAlerts: true,
   })
 
+  // 2FA setup state
+  const [showQRCode, setShowQRCode] = useState(false)
+  const [qrCodeUrl, setQrCodeUrl] = useState("")
+  const [verificationCode, setVerificationCode] = useState("")
+  const [backupCodes, setBackupCodes] = useState<string[]>([])
+  const [showBackupCodes, setShowBackupCodes] = useState(false)
+
   useEffect(() => {
     // Load user data from localStorage for display purposes
     const userData = localStorage.getItem("user")
@@ -101,6 +108,12 @@ export default function SettingsPage() {
             department: data.user.department || "",
             bio: data.user.bio || "",
           })
+
+          // Update security settings with 2FA status
+          setSecurity(prev => ({
+            ...prev,
+            twoFactorAuth: data.user.twoFactorEnabled || false
+          }))
         } else {
           console.log("Could not load profile data:", data.error)
         }
@@ -261,6 +274,120 @@ export default function SettingsPage() {
       await new Promise((resolve) => setTimeout(resolve, 500))
       setSaveMessage("Security settings saved!")
       setTimeout(() => setSaveMessage(""), 3000)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handle2FAToggle = async (enabled: boolean) => {
+    if (!user) return
+
+    if (enabled) {
+      // Setup 2FA
+      setIsLoading(true)
+      try {
+        const response = await fetch('/api/2fa-raw/setup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email: user.email }),
+        })
+
+        const data = await response.json()
+
+        if (response.ok) {
+          setQrCodeUrl(data.qrCode)
+          setShowQRCode(true)
+          setSaveMessage("Scan the QR code with your authenticator app, then enter the verification code below.")
+        } else {
+          setSaveMessage(data.error || "Failed to setup 2FA")
+          setSecurity(prev => ({ ...prev, twoFactorAuth: false }))
+        }
+      } catch (error) {
+        console.error("2FA setup error:", error)
+        setSaveMessage("Failed to setup 2FA. Please try again.")
+        setSecurity(prev => ({ ...prev, twoFactorAuth: false }))
+      } finally {
+        setIsLoading(false)
+      }
+    } else {
+      // Disable 2FA
+      setIsLoading(true)
+      try {
+        const response = await fetch('/api/2fa-raw/setup', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            email: user.email, 
+            token: "000000", // Dummy token for disable
+            enable: false 
+          }),
+        })
+
+        const data = await response.json()
+
+        if (response.ok) {
+          setSaveMessage("2FA has been disabled successfully.")
+          setShowQRCode(false)
+          setQrCodeUrl("")
+          setVerificationCode("")
+          setBackupCodes([])
+          setShowBackupCodes(false)
+        } else {
+          setSaveMessage(data.error || "Failed to disable 2FA")
+          setSecurity(prev => ({ ...prev, twoFactorAuth: true }))
+        }
+      } catch (error) {
+        console.error("2FA disable error:", error)
+        setSaveMessage("Failed to disable 2FA. Please try again.")
+        setSecurity(prev => ({ ...prev, twoFactorAuth: true }))
+      } finally {
+        setIsLoading(false)
+      }
+    }
+  }
+
+  const handleVerify2FA = async () => {
+    if (!user || !verificationCode.trim()) {
+      setSaveMessage("Please enter the verification code")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/2fa-raw/setup', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          email: user.email, 
+          token: verificationCode.trim(),
+          enable: true 
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSaveMessage("2FA has been enabled successfully!")
+        setBackupCodes(data.backupCodes || [])
+        setShowBackupCodes(true)
+        setShowQRCode(false)
+        setVerificationCode("")
+        setTimeout(() => {
+          setSaveMessage("")
+          setShowBackupCodes(false)
+        }, 10000)
+      } else {
+        setSaveMessage(data.error || "Invalid verification code")
+      }
+    } catch (error) {
+      console.error("2FA verification error:", error)
+      setSaveMessage("Failed to verify 2FA code. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -510,9 +637,74 @@ export default function SettingsPage() {
                   </div>
                   <Switch
                     checked={security.twoFactorAuth}
-                    onCheckedChange={(checked) => setSecurity({ ...security, twoFactorAuth: checked })}
+                    onCheckedChange={(checked) => {
+                      setSecurity({ ...security, twoFactorAuth: checked })
+                      handle2FAToggle(checked)
+                    }}
+                    disabled={isLoading}
                   />
                 </div>
+
+                {/* QR Code Setup */}
+                {showQRCode && (
+                  <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+                    <div className="text-center">
+                      <h4 className="font-medium">Set up your authenticator app</h4>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                      </p>
+                    </div>
+                    {qrCodeUrl && (
+                      <div className="flex justify-center">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={qrCodeUrl} alt="2FA QR Code" className="w-48 h-48" />
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="verificationCode">Enter verification code</Label>
+                      <div className="flex space-x-2">
+                        <Input
+                          id="verificationCode"
+                          type="text"
+                          value={verificationCode}
+                          onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          placeholder="000000"
+                          className="text-center text-lg tracking-widest"
+                          maxLength={6}
+                        />
+                        <Button onClick={handleVerify2FA} disabled={isLoading || !verificationCode.trim()}>
+                          {isLoading ? "Verifying..." : "Verify"}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Enter the 6-digit code from your authenticator app
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Backup Codes */}
+                {showBackupCodes && backupCodes.length > 0 && (
+                  <div className="space-y-4 p-4 border rounded-lg bg-green-50">
+                    <div className="text-center">
+                      <h4 className="font-medium text-green-800">Backup Codes Generated</h4>
+                      <p className="text-sm text-green-700 mt-1">
+                        Save these backup codes in a safe place. Each code can only be used once.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+                      {backupCodes.map((code, index) => (
+                        <div key={index} className="p-2 bg-white rounded border text-center">
+                          {code}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-green-700 text-center">
+                      You can use these codes to log in if you lose access to your authenticator app.
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label>Login Alerts</Label>
