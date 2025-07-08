@@ -47,7 +47,8 @@ export async function GET(req: NextRequest) {
         phone: user.phone || '',
         department: user.department || '',
         bio: user.bio || '',
-        twoFactorEnabled: user.twoFactorEnabled || false
+        twoFactorEnabled: user.twoFactorEnabled || false,
+        loginAlerts: user.loginAlerts !== undefined ? user.loginAlerts : true
       }
     });
 
@@ -153,7 +154,8 @@ export async function PUT(req: NextRequest) {
         phone: savedUser.phone || '',
         department: savedUser.department || '',
         bio: savedUser.bio || '',
-        twoFactorEnabled: savedUser.twoFactorEnabled || false
+        twoFactorEnabled: savedUser.twoFactorEnabled || false,
+        loginAlerts: savedUser.loginAlerts !== undefined ? savedUser.loginAlerts : true
       }
     });
 
