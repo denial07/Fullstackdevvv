@@ -11,6 +11,9 @@ export interface IUser extends Document {
   bio?: string;
   resetPasswordToken?: string;
   resetPasswordExpiry?: Date;
+  twoFactorEnabled: boolean;
+  twoFactorSecret?: string;
+  twoFactorBackupCodes?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -76,6 +79,17 @@ const UserSchema = new Schema<IUser>({
   resetPasswordExpiry: {
     type: Date,
     sparse: true
+  },
+  twoFactorEnabled: {
+    type: Boolean,
+    default: false
+  },
+  twoFactorSecret: {
+    type: String
+  },
+  twoFactorBackupCodes: {
+    type: [String],
+    default: []
   }
 }, {
   timestamps: true
@@ -84,6 +98,11 @@ const UserSchema = new Schema<IUser>({
 // Index for reset token lookups (email index is already created by unique: true)
 UserSchema.index({ resetPasswordToken: 1, resetPasswordExpiry: 1 });
 
-const User = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
+// Force model recompilation by deleting and recreating
+if (mongoose.models.User) {
+  delete mongoose.models.User;
+}
+
+const User = mongoose.model<IUser>('User', UserSchema);
 
 export default User;
