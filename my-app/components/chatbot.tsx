@@ -79,70 +79,57 @@ export function ChatBot({ isOpen, onClose }: ChatBotProps) {
 
     useEffect(() => {
         if (scrollAreaRef.current) {
-            scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight
+            scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
         }
-    }, [messages])
-
-    const generateResponse = (userMessage: string): string => {
-        const message = userMessage.toLowerCase()
-
-        if (
-            message.includes("revenue") ||
-            message.includes("financial") ||
-            message.includes("profit") ||
-            message.includes("expenditure")
-        ) {
-            return botResponses.revenue
-        } else if (
-            message.includes("shipment") ||
-            message.includes("trend") ||
-            message.includes("incoming") ||
-            message.includes("outgoing")
-        ) {
-            return botResponses.shipment
-        } else if (message.includes("inventory") || message.includes("stock") || message.includes("expir")) {
-            return botResponses.inventory
-        } else if (message.includes("order") || message.includes("payment") || message.includes("customer")) {
-            return botResponses.orders
-        } else if (message.includes("alert") || message.includes("critical") || message.includes("urgent")) {
-            return botResponses.alerts
-        } else if (message.includes("navigate") || message.includes("how to") || message.includes("use")) {
-            return botResponses.navigation
-        } else if (message.includes("performance") || message.includes("kpi") || message.includes("metric")) {
-            return botResponses.performance
-        } else if (message.includes("tip") || message.includes("help") || message.includes("dashboard")) {
-            return botResponses.dashboard
-        } else {
-            return "I can help you with: understanding charts and graphs, explaining dashboard metrics, navigating the system, interpreting business data, and providing insights about your operations. Could you be more specific about what you'd like to know?"
-        }
-    }
+    }, [messages]);
 
     const handleSendMessage = async (message: string) => {
         if (!message.trim()) return
 
-        // Add user message
         const userMessage: Message = {
             id: Date.now().toString(),
             type: "user",
             content: message,
             timestamp: new Date(),
         }
+
         setMessages((prev) => [...prev, userMessage])
         setInputValue("")
         setIsTyping(true)
 
-        // Simulate bot typing delay
-        setTimeout(() => {
-            const botResponse: Message = {
+        try {
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message }),
+            })
+
+            const data = await res.json()
+
+            const botMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 type: "bot",
-                content: generateResponse(message),
+                content: data.reply || "Sorry, I didn't understand that.",
                 timestamp: new Date(),
             }
-            setMessages((prev) => [...prev, botResponse])
+
+            setMessages((prev) => [...prev, botMessage])
+        } catch (err) {
+            console.error("Chat error:", err)
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: (Date.now() + 1).toString(),
+                    type: "bot",
+                    content: "Oops! There was a problem getting a response.",
+                    timestamp: new Date(),
+                },
+            ])
+        } finally {
             setIsTyping(false)
-        }, 1500)
+        }
     }
+
 
     const handleQuickAction = (query: string) => {
         handleSendMessage(query)
@@ -152,21 +139,26 @@ export function ChatBot({ isOpen, onClose }: ChatBotProps) {
 
     return (
         <div className="fixed inset-0 z-50 flex items-end justify-end p-6">
-            <Card className="w-96 h-[600px] shadow-2xl border-slate-200 flex flex-col">
-                <CardHeader
-                    className="flex flex-row items-center justify-between space-y-0 pb-4"
-                    style={{ backgroundColor: colors.primary }}
-                >
-                    <CardTitle className="flex items-center space-x-2 text-white">
-                        <Bot className="h-5 w-5" />
-                        <span>AI Assistant</span>
-                    </CardTitle>
-                    <Button variant="ghost" size="sm" onClick={onClose} className="text-white hover:bg-blue-600">
-                        <X className="h-4 w-4" />
-                    </Button>
+            <Card className="w-96 h-[600px] flex flex-col">
+                <CardHeader className="p-0">
+                    <div className="flex items-center justify-between px-4 py-3 bg-blue-800 rounded-t-md">
+                        <CardTitle className="flex items-center space-x-2 text-white text-base font-semibold">
+                            <Bot className="h-5 w-5" />
+                            <span>AI Assistant</span>
+                        </CardTitle>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={onClose}
+                            className="text-white hover:bg-blue-700"
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </CardHeader>
 
-                <CardContent className="flex-1 flex flex-col p-0">
+
+                <CardContent className="flex flex-col flex-1 min-h-0 p-0">
                     {/* Quick Actions */}
                     <div className="p-4 border-b border-slate-200 bg-slate-50">
                         <p className="text-xs text-slate-600 mb-2">Quick Actions:</p>
@@ -187,24 +179,33 @@ export function ChatBot({ isOpen, onClose }: ChatBotProps) {
                     </div>
 
                     {/* Messages */}
-                    <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-                        <div className="space-y-4">
+                    <div className="flex-1 min-h-0 overflow-y-auto" ref={scrollAreaRef}>
+                        <div className="flex flex-col gap-4 px-4 py-2">
                             {messages.map((message) => (
-                                <div key={message.id} className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}>
+                                <div
+                                    key={message.id}
+                                    className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
+                                >
                                     <div
-                                        className={`max-w-[80%] rounded-lg p-3 ${message.type === "user" ? "text-white" : "bg-slate-100 text-slate-900"
+                                        className={`max-w-[75%] px-4 py-2 rounded-2xl shadow-sm whitespace-pre-wrap break-words ${message.type === "user"
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-slate-100 text-slate-900"
                                             }`}
-                                        style={{
-                                            backgroundColor: message.type === "user" ? colors.primary : undefined,
-                                        }}
                                     >
-                                        <div className="flex items-start space-x-2">
-                                            {message.type === "bot" && <Bot className="h-4 w-4 mt-0.5 flex-shrink-0 text-blue-600" />}
-                                            {message.type === "user" && <User className="h-4 w-4 mt-0.5 flex-shrink-0" />}
-                                            <div className="flex-1">
+                                        <div className="flex items-end gap-2">
+                                            {message.type === "bot" && (
+                                                <Bot className="h-4 w-4 text-blue-600 shrink-0" />
+                                            )}
+                                            <div>
                                                 <p className="text-sm leading-relaxed">{message.content}</p>
-                                                <p className={`text-xs mt-1 ${message.type === "user" ? "text-blue-100" : "text-slate-500"}`}>
-                                                    {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                <p
+                                                    className={`text-xs mt-1 ${message.type === "user" ? "text-blue-200" : "text-slate-500"
+                                                        }`}
+                                                >
+                                                    {message.timestamp.toLocaleTimeString([], {
+                                                        hour: "2-digit",
+                                                        minute: "2-digit",
+                                                    })}
                                                 </p>
                                             </div>
                                         </div>
@@ -214,26 +215,24 @@ export function ChatBot({ isOpen, onClose }: ChatBotProps) {
 
                             {isTyping && (
                                 <div className="flex justify-start">
-                                    <div className="bg-slate-100 rounded-lg p-3 max-w-[80%]">
-                                        <div className="flex items-center space-x-2">
-                                            <Bot className="h-4 w-4" style={{ color: colors.primary }} />
-                                            <div className="flex space-x-1">
-                                                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
-                                                <div
-                                                    className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                                                    style={{ animationDelay: "0.1s" }}
-                                                ></div>
-                                                <div
-                                                    className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                                                    style={{ animationDelay: "0.2s" }}
-                                                ></div>
-                                            </div>
+                                    <div className="bg-slate-100 rounded-lg px-4 py-2 max-w-[75%] flex items-center gap-2">
+                                        <Bot className="h-4 w-4 text-blue-600" />
+                                        <div className="flex gap-1">
+                                            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
+                                            <div
+                                                className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
+                                                style={{ animationDelay: "0.1s" }}
+                                            />
+                                            <div
+                                                className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
+                                                style={{ animationDelay: "0.2s" }}
+                                            />
                                         </div>
                                     </div>
                                 </div>
                             )}
                         </div>
-                    </ScrollArea>
+                    </div>
 
                     {/* Input */}
                     <div className="p-4 border-t border-slate-200">
@@ -242,19 +241,23 @@ export function ChatBot({ isOpen, onClose }: ChatBotProps) {
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
                                 placeholder="Ask about charts, data, or dashboard features..."
-                                onKeyPress={(e) => e.key === "Enter" && handleSendMessage(inputValue)}
+                                onKeyDown={(e) => e.key === "Enter" && handleSendMessage(inputValue)}
                                 className="flex-1 border-slate-300"
                             />
                             <Button
                                 onClick={() => handleSendMessage(inputValue)}
                                 disabled={!inputValue.trim() || isTyping}
-                                style={{ backgroundColor: colors.primary, borderColor: colors.primary }}
+                                style={{
+                                    backgroundColor: colors.primary,
+                                    borderColor: colors.primary,
+                                }}
                                 className="hover:opacity-90"
                             >
                                 <Send className="h-4 w-4" />
                             </Button>
                         </div>
                     </div>
+
                 </CardContent>
             </Card>
         </div>
