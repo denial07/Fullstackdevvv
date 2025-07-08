@@ -110,10 +110,11 @@ export default function SettingsPage() {
             bio: data.user.bio || "",
           })
 
-          // Update security settings with 2FA status
+          // Update security settings with 2FA status and login alerts
           setSecurity(prev => ({
             ...prev,
-            twoFactorAuth: data.user.twoFactorEnabled || false
+            twoFactorAuth: data.user.twoFactorEnabled || false,
+            loginAlerts: data.user.loginAlerts !== undefined ? data.user.loginAlerts : true
           }))
         } else {
           console.log("Could not load profile data:", data.error)
@@ -270,11 +271,44 @@ export default function SettingsPage() {
   }
 
   const handleSecuritySave = async () => {
+    if (!user) return
+    
     setIsLoading(true)
+    setSaveMessage("")
+    
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      setSaveMessage("Security settings saved!")
-      setTimeout(() => setSaveMessage(""), 3000)
+      // Add timeout to prevent hanging
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      
+      const response = await fetch('/api/user/security', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          loginAlerts: security.loginAlerts,
+        }),
+        signal: controller.signal
+      })
+
+      clearTimeout(timeoutId)
+      const data = await response.json()
+
+      if (response.ok) {
+        setSaveMessage("Security settings saved successfully!")
+        setTimeout(() => setSaveMessage(""), 3000)
+      } else {
+        console.error("Security save error:", data)
+        setSaveMessage(data.error || "Failed to save security settings")
+      }
+    } catch (error) {
+      console.error("Security save error:", error)
+      if (error instanceof Error && error.name === 'AbortError') {
+        setSaveMessage("Request timed out. Please try again.")
+      } else {
+        setSaveMessage("Failed to save security settings. Please try again.")
+      }
     } finally {
       setIsLoading(false)
     }
@@ -735,10 +769,48 @@ export default function SettingsPage() {
                   <div className="space-y-0.5">
                     <Label>Login Alerts</Label>
                     <p className="text-sm text-gray-500">Get notified when someone logs into your account</p>
+                    {saveMessage && saveMessage.toLowerCase().includes("login alert") && (
+                      <p className="text-xs text-blue-600 mt-1">{saveMessage}</p>
+                    )}
                   </div>
                   <Switch
                     checked={security.loginAlerts}
-                    onCheckedChange={(checked) => setSecurity({ ...security, loginAlerts: checked })}
+                    onCheckedChange={async (checked) => {
+                      // Update local state immediately for UI responsiveness
+                      setSecurity({ ...security, loginAlerts: checked });
+                      
+                      // Auto-save to database
+                      try {
+                        setSaveMessage("Saving login alerts...");
+                        
+                        const response = await fetch('/api/user/security', {
+                          method: 'PUT',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            loginAlerts: checked,
+                          }),
+                        });
+
+                        const data = await response.json();
+
+                        if (response.ok) {
+                          setSaveMessage("Login alerts updated successfully!");
+                          setTimeout(() => setSaveMessage(""), 3000);
+                        } else {
+                          console.error("Auto-save error:", data);
+                          setSaveMessage("Failed to save login alerts");
+                          // Revert the toggle state on error
+                          setSecurity({ ...security, loginAlerts: !checked });
+                        }
+                      } catch (error) {
+                        console.error("Auto-save error:", error);
+                        setSaveMessage("Failed to save login alerts");
+                        // Revert the toggle state on error
+                        setSecurity({ ...security, loginAlerts: !checked });
+                      }
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
