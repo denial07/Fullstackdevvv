@@ -383,6 +383,10 @@ export default function SettingsPage() {
         setShowQRCode(false)
         setVerificationCode("")
         setVerificationError(false)
+        
+        // Update the toggle state to reflect that 2FA is now enabled
+        setSecurity(prev => ({ ...prev, twoFactorAuth: true }))
+        
         setTimeout(() => {
           setSaveMessage("")
           setShowBackupCodes(false)
@@ -390,6 +394,8 @@ export default function SettingsPage() {
       } else {
         setSaveMessage(data.error || "Invalid verification code")
         setVerificationError(true)
+        // Keep the toggle in the previous state if verification failed
+        setSecurity(prev => ({ ...prev, twoFactorAuth: false }))
       }
     } catch (error) {
       console.error("2FA verification error:", error)
