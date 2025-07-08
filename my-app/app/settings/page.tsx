@@ -84,6 +84,7 @@ export default function SettingsPage() {
   const [verificationCode, setVerificationCode] = useState("")
   const [backupCodes, setBackupCodes] = useState<string[]>([])
   const [showBackupCodes, setShowBackupCodes] = useState(false)
+  const [verificationError, setVerificationError] = useState(false)
 
   useEffect(() => {
     // Load user data from localStorage for display purposes
@@ -299,6 +300,7 @@ export default function SettingsPage() {
         if (response.ok) {
           setQrCodeUrl(data.qrCode)
           setShowQRCode(true)
+          setVerificationError(false) // Clear any previous error
           setSaveMessage("Scan the QR code with your authenticator app, then enter the verification code below.")
         } else {
           setSaveMessage(data.error || "Failed to setup 2FA")
@@ -353,10 +355,12 @@ export default function SettingsPage() {
   const handleVerify2FA = async () => {
     if (!user || !verificationCode.trim()) {
       setSaveMessage("Please enter the verification code")
+      setVerificationError(true)
       return
     }
 
     setIsLoading(true)
+    setVerificationError(false) // Clear any previous error
     try {
       const response = await fetch('/api/2fa-raw/setup', {
         method: 'PUT',
@@ -378,16 +382,19 @@ export default function SettingsPage() {
         setShowBackupCodes(true)
         setShowQRCode(false)
         setVerificationCode("")
+        setVerificationError(false)
         setTimeout(() => {
           setSaveMessage("")
           setShowBackupCodes(false)
         }, 10000)
       } else {
         setSaveMessage(data.error || "Invalid verification code")
+        setVerificationError(true)
       }
     } catch (error) {
       console.error("2FA verification error:", error)
       setSaveMessage("Failed to verify 2FA code. Please try again.")
+      setVerificationError(true)
     } finally {
       setIsLoading(false)
     }
@@ -667,9 +674,16 @@ export default function SettingsPage() {
                           id="verificationCode"
                           type="text"
                           value={verificationCode}
-                          onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          onChange={(e) => {
+                            setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                            setVerificationError(false) // Clear error when user starts typing
+                          }}
                           placeholder="000000"
-                          className="text-center text-lg tracking-widest"
+                          className={`text-center text-lg tracking-widest ${
+                            verificationError 
+                              ? "border-red-500 bg-red-50 focus:border-red-500 focus:ring-red-500" 
+                              : ""
+                          }`}
                           maxLength={6}
                         />
                         <Button onClick={handleVerify2FA} disabled={isLoading || !verificationCode.trim()}>
@@ -679,6 +693,12 @@ export default function SettingsPage() {
                       <p className="text-xs text-gray-500">
                         Enter the 6-digit code from your authenticator app
                       </p>
+                      {verificationError && (
+                        <p className="text-xs text-red-600 flex items-center">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Invalid verification code. Please try again.
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
