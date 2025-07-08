@@ -14,6 +14,14 @@ export interface IUser extends Document {
   twoFactorEnabled: boolean;
   twoFactorSecret?: string;
   twoFactorBackupCodes?: string[];
+  loginAlerts: boolean;
+  trustedDevices?: Array<{
+    deviceId: string;
+    ipAddress: string;
+    userAgent: string;
+    location?: string;
+    lastUsed: Date;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -90,7 +98,18 @@ const UserSchema = new Schema<IUser>({
   twoFactorBackupCodes: {
     type: [String],
     default: []
-  }
+  },
+  loginAlerts: {
+    type: Boolean,
+    default: true
+  },
+  trustedDevices: [{
+    deviceId: { type: String, required: true },
+    ipAddress: { type: String, required: true },
+    userAgent: { type: String, required: true },
+    location: { type: String },
+    lastUsed: { type: Date, default: Date.now }
+  }]
 }, {
   timestamps: true
 });
