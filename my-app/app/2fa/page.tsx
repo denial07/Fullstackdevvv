@@ -52,7 +52,7 @@ export default function TwoFactorPage() {
     setError("")
 
     try {
-      const response = await fetch('/api/2fa/verify', {
+      const response = await fetch('/api/2fa-raw/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,15 +144,19 @@ export default function TwoFactorPage() {
                   id="token"
                   type="text"
                   value={token}
-                  onChange={(e) => setToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
+                  onChange={(e) => {
+                    // Allow alphanumeric characters only, max 8 characters
+                    const cleaned = e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase()
+                    setToken(cleaned)
+                  }}
+                  placeholder="000000 or ABCDEFGH"
                   className="text-center text-lg tracking-widest"
-                  maxLength={10} // Allow backup codes which are longer
+                  maxLength={8}
                   autoComplete="one-time-code"
                   autoFocus
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Enter the 6-digit code from your authenticator app or a backup code
+                  Enter the 6-digit code from your authenticator app or an 8-character backup code
                 </p>
               </div>
 
