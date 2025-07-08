@@ -27,31 +27,41 @@ export default function LoginPage() {
     setIsLoading(true)
     setError("")
 
-    // Simulate login process
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Call the actual login API
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-      // Mock authentication - in real app, this would be an API call
-      if (email === "admin@palletworks.sg" && password === "admin123") {
-        // Store user session (in real app, use proper auth tokens)
-        localStorage.setItem(
-          "user",
-          JSON.stringify({
-            id: "1",
-            email: "admin@palletworks.sg",
-            name: "Admin User",
-            role: "Administrator",
-            company: "Singapore Pallet Works",
-          }),
-        )
-        router.push("/")
-      } else {
-        setError("Invalid email or password. Try admin@palletworks.sg / admin123")
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
       }
+
+      // Check if 2FA is required
+      if (data.requires2FA) {
+        // Store email for 2FA verification
+        localStorage.setItem('2fa-email', data.email);
+        // Redirect to 2FA page
+        router.push(`/2fa?email=${encodeURIComponent(data.email)}`);
+        return;
+      }
+
+      // Store user session (normal login without 2FA)
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      // Redirect to dashboard
+      router.push("/");
+      
     } catch (err) {
-      setError("Login failed. Please try again.")
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 
@@ -132,7 +142,7 @@ export default function LoginPage() {
                     Remember me
                   </Label>
                 </div>
-                <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-500">
+                <Link href="/reset" className="text-sm text-blue-600 hover:text-blue-500">
                   Forgot password?
                 </Link>
               </div>
@@ -165,8 +175,8 @@ export default function LoginPage() {
         {/* Footer */}
         <div className="text-center">
           <p className="text-sm text-gray-600">
-            Don't have an account?{" "}
-            <Link href="/register" className="text-blue-600 hover:text-blue-500">
+            Don&apos;t have an account?{" "}
+            <Link href="/contact-admin" className="text-blue-600 hover:text-blue-500">
               Contact administrator
             </Link>
           </p>
