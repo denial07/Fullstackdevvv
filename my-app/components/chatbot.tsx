@@ -86,11 +86,12 @@ export function ChatBot({ isOpen, onClose }: ChatBotProps) {
     const handleSendMessage = async (message: string) => {
         if (!message.trim()) return
 
+        const timestamp = new Date()
         const userMessage: Message = {
-            id: Date.now().toString(),
+            id: timestamp.getTime().toString(),
             type: "user",
             content: message,
-            timestamp: new Date(),
+            timestamp,
         }
 
         setMessages((prev) => [...prev, userMessage])
@@ -116,12 +117,13 @@ export function ChatBot({ isOpen, onClose }: ChatBotProps) {
             setMessages((prev) => [...prev, botMessage])
         } catch (err) {
             console.error("Chat error:", err)
+
             setMessages((prev) => [
                 ...prev,
                 {
                     id: (Date.now() + 1).toString(),
                     type: "bot",
-                    content: "Oops! There was a problem getting a response.",
+                    content: "⚠️ Oops! There was a problem reaching Gemini.",
                     timestamp: new Date(),
                 },
             ])
@@ -129,6 +131,7 @@ export function ChatBot({ isOpen, onClose }: ChatBotProps) {
             setIsTyping(false)
         }
     }
+
 
 
     const handleQuickAction = (query: string) => {
