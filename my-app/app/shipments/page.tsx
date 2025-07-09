@@ -9,7 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, Ship, Truck, Plus } from "lucide-react"
 import Link from "next/link"
 import { UserNav } from "@/components/user-nav"
-import { Edit } from "lucide-react" // Make sure this is at the top
+import { Edit } from "lucide-react"
+import IncomingShipmentCard from "@/components/IncomingShipmentCard";
+import OutgoingShipmentCard from "@/components/OutgoingShipmentCard";
 
 export default async function ShipmentsPage() {
   await connectToDatabase()
@@ -138,37 +140,7 @@ export default async function ShipmentsPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {incoming.map((shipment) => (
-                    <div key={String(shipment._id)} className="p-4 border rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium">{shipment.id}</span>
-                        <Badge variant={
-                          shipment.status === "Delayed"
-                            ? "destructive"
-                            : shipment.status === "In Transit"
-                              ? "secondary"
-                              : "default"
-                        }>
-                          {shipment.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-600">{shipment.supplier}</p>
-                      <p className="text-xs text-gray-500">{shipment.description}</p>
-                      <p className="text-xs text-gray-500">
-                        ETA: {new Date(shipment.shippingDate).toLocaleDateString()}
-                      </p>
-                      <p className="font-medium mt-2">S${(shipment.price || 0).toLocaleString()}</p>
-
-                      {/* Edit Button */}
-                      <div className="mt-4 text-right">
-                        <Link
-                          href={`/shipments/${shipment._id}/edit`}
-                          className="inline-flex items-center text-sm text-blue-600 hover:underline"
-                        >
-                          <Edit className="w-4 h-4 mr-1" />
-                          Edit
-                        </Link>
-                      </div>
-                    </div>
+                    <IncomingShipmentCard key={String(shipment._id)} shipment={shipment} />
                   ))}
                 </div>
               </CardContent>
@@ -195,43 +167,19 @@ export default async function ShipmentsPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {outgoing.map((shipment) => (
-                    <div key={String(shipment._id)} className="p-4 border rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium">{shipment.id}</span>
-                        <Badge variant={
-                          shipment.status === "Preparing"
-                            ? "outline"
-                            : shipment.status === "Delivered"
-                              ? "default"
-                              : "secondary"
-                        }>
-                          {shipment.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-600">{shipment.customer}</p>
-                      <p className="text-xs text-gray-500">{shipment.description}</p>
-                      <p className="text-xs text-gray-500">
-                        {shipment.status === "Delivered"
-                          ? "Delivered:"
-                          : shipment.status === "Preparing"
-                            ? "Scheduled:"
-                            : "ETA:"}{" "}
-                        {new Date(shipment.shippingDate).toLocaleDateString()}
-                      </p>
-                      <p className="font-medium mt-2">S${(shipment.price || 0).toLocaleString()}</p>
-                    </div>
+                    <OutgoingShipmentCard key={String(shipment._id)} shipment={shipment} />
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        </Tabs>
+      </Tabs>
 
 
 
-      </main>
-    </div>
+    </main>
+    </div >
   )
 }
 
