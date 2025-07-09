@@ -12,3 +12,7 @@ export async function GET() {
         return NextResponse.json({ error: "Failed to fetch inventory" }, { status: 500 })
     }
 }
+
+
+// create a path to the db, db link in .env
+// create a model for the faq
