@@ -48,7 +48,8 @@ export async function GET(req: NextRequest) {
         department: user.department || '',
         bio: user.bio || '',
         twoFactorEnabled: user.twoFactorEnabled || false,
-        loginAlerts: user.loginAlerts !== undefined ? user.loginAlerts : true
+        loginAlerts: user.loginAlerts !== undefined ? user.loginAlerts : true,
+        sessionTimeout: user.sessionTimeout !== undefined ? user.sessionTimeout : 30
       }
     });
 
