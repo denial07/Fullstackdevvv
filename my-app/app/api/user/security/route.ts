@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 // PUT /api/user/security - Update security settings
 export async function PUT(req: NextRequest) {
   try {
-    const { loginAlerts } = await req.json();
+    const { loginAlerts, sessionTimeout } = await req.json();
     
     const token = req.cookies.get("auth-token")?.value;
 
@@ -17,12 +17,21 @@ export async function PUT(req: NextRequest) {
     }
 
     // Decode the session token
-    const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
-    
-    // Check if token is expired (24 hours)
-    if (Date.now() - decoded.timestamp > 24 * 60 * 60 * 1000) {
+    let decoded;
+    try {
+      decoded = JSON.parse(Buffer.from(token, 'base64').toString());
+      const tokenAge = Date.now() - decoded.timestamp;
+      
+      // Check if token is expired (24 hours)
+      if (tokenAge > 24 * 60 * 60 * 1000) {
+        return NextResponse.json(
+          { error: "Token expired" },
+          { status: 401 }
+        );
+      }
+    } catch (error) {
       return NextResponse.json(
-        { error: "Token expired" },
+        { error: "Invalid token" },
         { status: 401 }
       );
     }
@@ -30,10 +39,24 @@ export async function PUT(req: NextRequest) {
     // Connect to database and update security settings
     await connectToDatabase();
     
-    const updateData: Partial<{ loginAlerts: boolean }> = {};
+    const updateData: Partial<{ loginAlerts: boolean; sessionTimeout: number }> = {};
+    
     if (loginAlerts !== undefined) {
       updateData.loginAlerts = Boolean(loginAlerts); // Ensure it's a boolean
     }
+    
+    if (sessionTimeout !== undefined) {
+      const timeoutValue = parseInt(sessionTimeout);
+      // Validate session timeout range (5 minutes to 24 hours)
+      if (timeoutValue < 5 || timeoutValue > 1440) {
+        return NextResponse.json(
+          { error: "Session timeout must be between 5 and 1440 minutes" },
+          { status: 400 }
+        );
+      }
+      updateData.sessionTimeout = timeoutValue;
+    }
+    
     
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({
@@ -67,7 +90,8 @@ export async function PUT(req: NextRequest) {
         id: user._id,
         email: user.email,
         name: user.name,
-        loginAlerts: user.loginAlerts !== undefined ? user.loginAlerts : true
+        loginAlerts: user.loginAlerts !== undefined ? user.loginAlerts : true,
+        sessionTimeout: user.sessionTimeout !== undefined ? user.sessionTimeout : 30
       }
     });
 
