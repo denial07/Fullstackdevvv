@@ -434,7 +434,7 @@ export default function InventoryPage() {
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
-              <Button size="sm">Add Item</Button>
+              <Button size="sm">Import</Button>
             </div>
           </div>
         </div>
