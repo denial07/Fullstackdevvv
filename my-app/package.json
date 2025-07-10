@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed:shipments": "ts-node scripts/seedShipments.ts"
+    "seed:shipments": "ts-node scripts/seedShipments.ts",
+    "seed:orders": "ts-node scripts/seedOrders.ts"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",
@@ -35,6 +36,7 @@
     "react-day-picker": "^9.7.0",
     "react-dom": "^19.0.0",
     "recharts": "^3.0.2",
+    "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
