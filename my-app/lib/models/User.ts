@@ -15,6 +15,7 @@ export interface IUser extends Document {
   twoFactorSecret?: string;
   twoFactorBackupCodes?: string[];
   loginAlerts: boolean;
+  sessionTimeout?: number; // Session timeout in minutes
   trustedDevices?: Array<{
     deviceId: string;
     ipAddress: string;
@@ -102,6 +103,12 @@ const UserSchema = new Schema<IUser>({
   loginAlerts: {
     type: Boolean,
     default: true
+  },
+  sessionTimeout: {
+    type: Number,
+    default: 30,
+    min: [5, 'Session timeout must be at least 5 minutes'],
+    max: [1440, 'Session timeout cannot exceed 24 hours (1440 minutes)']
   },
   trustedDevices: [{
     deviceId: { type: String, required: true },
