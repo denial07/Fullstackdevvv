@@ -1,20 +1,37 @@
-// lib/models/Shipment.ts
-import mongoose, { Schema, models, model } from "mongoose";
+import mongoose, { Schema, model, models, Document } from "mongoose";
 
-const ShipmentSchema = new Schema({
+export interface ShipmentDoc extends Document {
+    _id: string;
+    type: "incoming" | "outgoing";
+    vendor?: string;
+    customer?: string;
+    description?: string;
+    price: number;
+    status: string;
+    eta?: Date;
+    newEta?: Date;
+    deliveredDate?: Date;
+    shippingDate?: Date;
+    createdAt?: Date;
+    updatedAt?: Date;
+}
 
-    id: { type: String, required: true, unique: true },
-    type: { type: String, enum: ["incoming", "outgoing"], required: true },
-    vendor: String,
-    description: String,
-    status: { type: String, required: true },
-    eta: Date,
-    price: { type: Number, required: true },
+const ShipmentSchema = new Schema<ShipmentDoc>(
+    {
+        _id: { type: String, required: true, unique: true },
+        type: { type: String, enum: ["incoming", "outgoing"], required: true },
+        vendor: String,
+        customer: String,
+        description: String,
+        price: { type: Number, required: true },
+        status: { type: String, required: true },
+        eta: Date,
+        newEta: Date,
+        deliveredDate: Date,
+        shippingDate: Date,
+    },
+    { timestamps: true }
+);
 
-    // Shared fields
-    // Incoming shipment details
-    
-}, { timestamps: true }); // optional: adds createdAt & updatedAt
-
-const Shipment = models.Shipment || model("Shipment", ShipmentSchema);
+const Shipment = models.Shipment || model<ShipmentDoc>("Shipment", ShipmentSchema);
 export default Shipment;

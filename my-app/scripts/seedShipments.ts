@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { config } from "dotenv";
 import Shipment from "../lib/models/Shipment";
 
-config(); // Load .env
+config(); // Load .env.local
 
 async function seed() {
     const uri = process.env.MONGODB_URI;
@@ -12,16 +12,17 @@ async function seed() {
     }
 
     await mongoose.connect(uri);
-    await Shipment.deleteMany(); // Reset
+    await Shipment.deleteMany(); // Clear existing records
 
     await Shipment.insertMany([
+        // Incoming Shipments
         {
             id: "SH-IN-001",
             type: "incoming",
             vendor: "Malaysian Timber Co.",
             description: "Teak Wood - 50m³",
-            status: "In Transit",
-            eta: new Date("2024-01-15"),
+            status: "In Transit", // Displayed, actual status is determined in UI
+            eta: new Date("2025-07-12"),
             price: 15000,
         },
         {
@@ -30,7 +31,8 @@ async function seed() {
             vendor: "Indonesian Wood Supply",
             description: "Pine Wood - 75m³",
             status: "Delayed",
-            eta: new Date("2024-01-12"),
+            eta: new Date("2025-07-05"), // Original ETA passed
+            newEta: new Date("2025-07-15"), // Delayed
             price: 22000,
         },
         {
@@ -38,35 +40,38 @@ async function seed() {
             type: "incoming",
             vendor: "Thai Forest Products",
             description: "Oak Wood - 40m³",
-            status: "Arrived",
-            arrival: new Date("2024-01-08"),
+            status: "Delivered",
+            eta: new Date("2025-07-01"),
+            deliveredDate: new Date("2025-07-07"),
             price: 18500,
         },
+
+        // Outgoing Shipments
         {
             id: "SH-OUT-001",
             type: "outgoing",
-            vendor: "ABC Logistics Pte Ltd",
+            customer: "ABC Logistics Pte Ltd",
             description: "Standard Pallets x 500",
             status: "Delivered",
-            arrival: new Date("2024-01-10"),
+            shippingDate: new Date("2025-07-06"),
             price: 12500,
         },
         {
             id: "SH-OUT-002",
             type: "outgoing",
-            vendor: "Singapore Shipping Co.",
+            customer: "Singapore Shipping Co.",
             description: "Heavy Duty Pallets x 200",
             status: "In Transit",
-            eta: new Date("2024-01-14"),
+            shippingDate: new Date("2025-07-12"),
             price: 8900,
         },
         {
             id: "SH-OUT-003",
             type: "outgoing",
-            vendor: "Maritime Solutions Ltd",
+            customer: "Maritime Solutions Ltd",
             description: "Custom Pallets x 150",
             status: "Preparing",
-            eta: new Date("2024-01-16"),
+            shippingDate: new Date("2025-07-14"),
             price: 6750,
         },
     ]);
