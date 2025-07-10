@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ArrowLeft, User, Bell, Shield, Building, Save, Eye, EyeOff, CheckCircle, AlertCircle } from "lucide-react"
 import Link from "next/link"
+import { useSession } from "@/components/SessionProvider"
 
 interface UserData {
   id: string
@@ -36,6 +37,7 @@ interface CompanyData {
 }
 
 export default function SettingsPage() {
+  const { setSessionTimeout: updateGlobalSessionTimeout, sessionTimeout: globalSessionTimeout } = useSession()
   const [user, setUser] = useState<UserData | null>(null)
   const [company, setCompany] = useState<CompanyData | null>(null)
   const [isLoadingCompany, setIsLoadingCompany] = useState(true)
@@ -114,7 +116,8 @@ export default function SettingsPage() {
           setSecurity(prev => ({
             ...prev,
             twoFactorAuth: data.user.twoFactorEnabled || false,
-            loginAlerts: data.user.loginAlerts !== undefined ? data.user.loginAlerts : true
+            loginAlerts: data.user.loginAlerts !== undefined ? data.user.loginAlerts : true,
+            sessionTimeout: (data.user.sessionTimeout !== undefined ? data.user.sessionTimeout : 30).toString()
           }))
         } else {
           console.log("Could not load profile data:", data.error)
@@ -277,6 +280,8 @@ export default function SettingsPage() {
     setSaveMessage("")
     
     try {
+      const timeoutValue = parseInt(security.sessionTimeout) || 30;
+      
       // Add timeout to prevent hanging
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
@@ -288,6 +293,7 @@ export default function SettingsPage() {
         },
         body: JSON.stringify({
           loginAlerts: security.loginAlerts,
+          sessionTimeout: timeoutValue,
         }),
         signal: controller.signal
       })
@@ -297,6 +303,21 @@ export default function SettingsPage() {
 
       if (response.ok) {
         setSaveMessage("Security settings saved successfully!")
+        
+        // Update the local state with the returned values
+        if (data.user) {
+          const newSessionTimeout = data.user.sessionTimeout !== undefined ? data.user.sessionTimeout : 30;
+          
+          setSecurity(prev => ({
+            ...prev,
+            loginAlerts: data.user.loginAlerts !== undefined ? data.user.loginAlerts : prev.loginAlerts,
+            sessionTimeout: newSessionTimeout.toString()
+          }));
+          
+          // Update the global session timeout for auto-logout functionality
+          updateGlobalSessionTimeout(newSessionTimeout);
+        }
+        
         setTimeout(() => setSaveMessage(""), 3000)
       } else {
         console.error("Security save error:", data)
@@ -821,7 +842,18 @@ export default function SettingsPage() {
                     value={security.sessionTimeout}
                     onChange={(e) => setSecurity({ ...security, sessionTimeout: e.target.value })}
                     className="w-32"
+                    min="5"
+                    max="1440"
+                    placeholder="30"
                   />
+                  <p className="text-xs text-gray-500">
+                    Auto logout after this many minutes of inactivity (5-1440 minutes)
+                  </p>
+                  {globalSessionTimeout && (
+                    <p className="text-xs text-blue-600">
+                      Current active timeout: {globalSessionTimeout} minutes
+                    </p>
+                  )}
                 </div>
                 <Button onClick={handleSecuritySave} disabled={isLoading}>
                   <Save className="h-4 w-4 mr-2" />
