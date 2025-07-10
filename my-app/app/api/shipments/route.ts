@@ -4,9 +4,16 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
     await connectToDatabase();
-    const shipments = await Shipment.find();
-    return NextResponse.json(shipments);
+
+    // 1) get plain JS objects, not full Mongoose docs
+    const shipments = await Shipment.find().lean();
+
+    // 2) ensure Dates and ObjectIds become strings, drop any toJSON baggage
+    const safe = JSON.parse(JSON.stringify(shipments));
+
+    return NextResponse.json(safe);
 }
+
 
 export async function POST(req: Request) {
     try {
