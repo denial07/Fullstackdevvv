@@ -1,8 +1,9 @@
 import mongoose, { Schema, model, models, Document } from "mongoose";
 
 export interface ShipmentDoc extends Document {
-    _id: string;
+    // keep _id as ObjectId
     type: "incoming" | "outgoing";
+    id: string;              // your own shipment number
     vendor?: string;
     customer?: string;
     description?: string;
@@ -18,7 +19,7 @@ export interface ShipmentDoc extends Document {
 
 const ShipmentSchema = new Schema<ShipmentDoc>(
     {
-        _id: { type: String, required: true, unique: true },
+        id: { type: String, required: true, unique: true },   // business ID
         type: { type: String, enum: ["incoming", "outgoing"], required: true },
         vendor: String,
         customer: String,
@@ -35,3 +36,4 @@ const ShipmentSchema = new Schema<ShipmentDoc>(
 
 const Shipment = models.Shipment || model<ShipmentDoc>("Shipment", ShipmentSchema);
 export default Shipment;
+

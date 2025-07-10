@@ -12,26 +12,53 @@ import { UserNav } from "@/components/user-nav"
 import { Edit } from "lucide-react"
 import IncomingShipmentCard from "@/components/IncomingShipmentCard";
 import OutgoingShipmentCard from "@/components/OutgoingShipmentCard";
+// app/shipments/page.tsx  (Server Component)
+
 
 export default async function ShipmentsPage() {
-  await connectToDatabase()
-  const rawShipments = await Shipment.find().lean()
+  // 1) Fetch your API route (which already serializes _id, dates, etc.)
+  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/shipments`, {
+    next: { revalidate: 60 }, // or 'cache: "no-store"' if needed
+  });
 
-  const incoming = rawShipments.filter((s) => s.type === "incoming")
-  const outgoing = rawShipments.filter((s) => s.type === "outgoing")
+  const shipments: Array<{
+    _id: string;
+    type: "incoming" | "outgoing";
+    id: string;
+    vendor?: string;
+    customer?: string;
+    description?: string;
+    price: number;
+    status: string;
+    eta?: string;
+    newEta?: string;
+    deliveredDate?: string;
+    shippingDate?: string;
+  }> = await res.json();
 
-  const incomingTotal = incoming.length
-  const incomingDelayed = incoming.filter((s) => s.status === "Delayed").length
-  const incomingValue = incoming.reduce((sum, s) => sum + (s.price || 0), 0)
+  // 2) Now filter client-safe JSON
+  const incoming = shipments.filter((s) => s.type === "incoming");
+  const outgoing = shipments.filter((s) => s.type === "outgoing");
+  const incomingTotal = incoming.length;
+  const outgoingTotal = outgoing.length;
+  const incomingDelayed = incoming.filter((s) => s.status === "Delayed").length;
+  const outgoingPreparing = outgoing.filter((s) => s.status === "Preparing").length;
+  const totalThisMonth = shipments.filter((s) => {
+    const rawDate = s.shippingDate || s.eta;
 
-  const outgoingTotal = outgoing.length
-  const outgoingPreparing = outgoing.filter((s) => ["Preparing", "Scheduled"].includes(s.status)).length
-  const outgoingValue = outgoing.reduce((sum, s) => sum + (s.price || 0), 0)
+    if (!rawDate) return false; // skip if both are undefined
 
-  const combinedValue = incomingValue + outgoingValue
-  const totalThisMonth = rawShipments.length // optionally filter by date if needed
+    const date = new Date(rawDate);
+    const now = new Date();
 
+    return (
+      !isNaN(date.getTime()) && // ensure valid date
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear()
+    );
+  }).length;
 
+  const combinedValue = shipments.reduce((total, s) => total + (s.price || 0), 0);
 
   // Sort and get latest 3
 
@@ -140,7 +167,7 @@ export default async function ShipmentsPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {incoming.map((shipment) => (
-                    <IncomingShipmentCard key={String(shipment._id)} shipment={shipment} />
+                    <IncomingShipmentCard key={shipment._id} shipment={shipment} />
                   ))}
                 </div>
               </CardContent>
@@ -170,15 +197,15 @@ export default async function ShipmentsPage() {
                     <OutgoingShipmentCard key={String(shipment._id)} shipment={shipment} />
                   ))}
                 </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-      </Tabs>
+        </Tabs>
 
 
 
-    </main>
+      </main>
     </div >
   )
 }
