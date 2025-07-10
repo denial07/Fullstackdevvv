@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { config } from "dotenv";
 import Shipment from "../lib/models/Shipment";
+import { de } from "date-fns/locale";
 
 config(); // Load .env.local
 
@@ -22,6 +23,7 @@ async function seed() {
             vendor: "Malaysian Timber Co.",
             description: "Teak Wood - 50m³",
             status: "In Transit", // Displayed, actual status is determined in UI
+            destination: "warehouse-A",
             eta: new Date("2025-07-12"),
             price: 15000,
         },
@@ -31,6 +33,7 @@ async function seed() {
             vendor: "Indonesian Wood Supply",
             description: "Pine Wood - 75m³",
             status: "Delayed",
+            destination: "warehouse-B",
             eta: new Date("2025-07-05"), // Original ETA passed
             newEta: new Date("2025-07-15"), // Delayed
             price: 22000,
@@ -41,6 +44,7 @@ async function seed() {
             vendor: "Thai Forest Products",
             description: "Oak Wood - 40m³",
             status: "Delivered",
+            destination: "warehouse-C",
             eta: new Date("2025-07-01"),
             deliveredDate: new Date("2025-07-07"),
             price: 18500,
@@ -53,6 +57,7 @@ async function seed() {
             customer: "ABC Logistics Pte Ltd",
             description: "Standard Pallets x 500",
             status: "Delivered",
+            destination: "Spain",
             shippingDate: new Date("2025-07-06"),
             price: 12500,
         },
@@ -62,6 +67,7 @@ async function seed() {
             customer: "Singapore Shipping Co.",
             description: "Heavy Duty Pallets x 200",
             status: "In Transit",
+            destination: "Germany",
             shippingDate: new Date("2025-07-12"),
             price: 8900,
         },
@@ -71,6 +77,7 @@ async function seed() {
             customer: "Maritime Solutions Ltd",
             description: "Custom Pallets x 150",
             status: "Preparing",
+            destination: "Australia",
             shippingDate: new Date("2025-07-14"),
             price: 6750,
         },

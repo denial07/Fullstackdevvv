@@ -9,6 +9,7 @@ export interface ShipmentDoc extends Document {
     description?: string;
     price: number;
     status: string;
+    destination: string; // optional, for outgoing shipments
     eta?: Date;
     newEta?: Date;
     deliveredDate?: Date;
@@ -26,6 +27,7 @@ const ShipmentSchema = new Schema<ShipmentDoc>(
         description: String,
         price: { type: Number, required: true },
         status: { type: String, required: true },
+        destination: { type: String, default: "warehouse-A" }, // default for outgoing shipment
         eta: Date,
         newEta: Date,
         deliveredDate: Date,

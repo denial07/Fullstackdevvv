@@ -45,6 +45,8 @@ export default function IncomingShipmentCard({ shipment }: { shipment: any }) {
             <p className="text-xs text-gray-500">
                 ETA: {new Date(shipment.eta).toLocaleDateString()}
             </p>
+            <p className="text-xs text-gray-500">{shipment.destination}</p>
+
             <p className="font-medium mt-2">S${(shipment.price || 0).toLocaleString()}</p>
 
             <div className="mt-4 text-right">

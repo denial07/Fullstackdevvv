@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { UserNav } from "@/components/user-nav";
+import { describe } from "node:test";
+import { use } from "react";
+
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -53,6 +56,7 @@ export default async function IncomingShipmentsPage() {
       expectedArrival: eta?.toISOString().split("T")[0] || "-",
       actualArrival: arrival?.toISOString().split("T")[0] || "-",
       value: s.price,
+      destination: s.destination || "Warehouse A",
       delay,
       items: s.description,
       trackingNumber: s.id,
@@ -184,6 +188,7 @@ export default async function IncomingShipmentsPage() {
                     <TableHead>Vendor</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Items</TableHead>
+                    <TableHead>Destination</TableHead>
                     <TableHead>Vessel</TableHead>
                     <TableHead>Shipping Date</TableHead>
                     <TableHead>Expected Arrival</TableHead>
@@ -195,27 +200,38 @@ export default async function IncomingShipmentsPage() {
                 </TableHeader>
                 <TableBody>
                   {incomingShipments.map((shipment) => (
-                    <TableRow key={shipment.id}>
-                      <TableCell className="font-medium">{shipment.id}</TableCell>
-                      <TableCell>{shipment.vendor}</TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusColor(shipment.status)}>{shipment.status}</Badge>
+                    <TableRow className="hover:bg-gray-100 transition-colors cursor-pointer">
+                      <TableCell colSpan={12} className="p-0">
+                        <Link
+                          href={`/shipments/${shipment.id}`}
+                          className="block w-full h-full p-4"
+                        >
+                          <div className="grid grid-cols-12 gap-2">
+                            <div className="col-span-1 font-medium">{shipment.id}</div>
+                            <div className="col-span-1">{shipment.vendor}</div>
+                            <div className="col-span-1">
+                              <Badge variant={getStatusColor(shipment.status)}>{shipment.status}</Badge>
+                            </div>
+                            <div className="col-span-2 truncate">{shipment.items}</div>
+                            <div className="col-span-1">{shipment.destination}</div>
+                            <div className="col-span-1">{shipment.vessel}</div>
+                            <div className="col-span-1">{shipment.shippingDate}</div>
+                            <div className="col-span-1">{shipment.expectedArrival}</div>
+                            <div className="col-span-1">{shipment.actualArrival || "-"}</div>
+                            <div className="col-span-1">{shipment.value.toLocaleString()}</div>
+                            <div className="col-span-1">
+                              {shipment.delay > 0 ? (
+                                <span className="text-red-600 font-medium">{shipment.delay}</span>
+                              ) : (
+                                <span className="text-green-600">0</span>
+                              )}
+                            </div>
+                            <div className="col-span-1 font-mono text-xs">{shipment.trackingNumber}</div>
+                          </div>
+                        </Link>
                       </TableCell>
-                      <TableCell className="max-w-xs truncate">{shipment.items}</TableCell>
-                      <TableCell>{shipment.vessel}</TableCell>
-                      <TableCell>{shipment.shippingDate}</TableCell>
-                      <TableCell>{shipment.expectedArrival}</TableCell>
-                      <TableCell>{shipment.actualArrival || "-"}</TableCell>
-                      <TableCell>{shipment.value.toLocaleString()}</TableCell>
-                      <TableCell>
-                        {shipment.delay > 0 ? (
-                          <span className="text-red-600 font-medium">{shipment.delay}</span>
-                        ) : (
-                          <span className="text-green-600">0</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{shipment.trackingNumber}</TableCell>
                     </TableRow>
+
                   ))}
                 </TableBody>
               </Table>

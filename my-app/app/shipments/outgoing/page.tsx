@@ -43,6 +43,7 @@ export default async function OutgoingShipmentsPage() {
     shippingDate: s.shippingDate?.toISOString().split("T")[0] || "-",
     deliveryDate: s.deliveryDate?.toISOString().split("T")[0] || null,
     value: s.price,
+    destination: s.destination || "Warehouse A",
     items: s.description,
     trackingNumber: s.trackingNumber || s.id,
     driver: s.driver || "TBD",
@@ -179,6 +180,7 @@ export default async function OutgoingShipmentsPage() {
                     <TableHead>Order Date</TableHead>
                     <TableHead>Shipping Date</TableHead>
                     <TableHead>Delivery Date</TableHead>
+                    <TableHead>Destination</TableHead>
                     <TableHead>Driver</TableHead>
                     <TableHead>Vehicle</TableHead>
                     <TableHead>Value (S$)</TableHead>
@@ -197,6 +199,7 @@ export default async function OutgoingShipmentsPage() {
                       <TableCell>{shipment.orderDate}</TableCell>
                       <TableCell>{shipment.shippingDate}</TableCell>
                       <TableCell>{shipment.deliveryDate || "-"}</TableCell>
+                      <TableCell>{shipment.destination}</TableCell>
                       <TableCell>{shipment.driver}</TableCell>
                       <TableCell>{shipment.vehicle}</TableCell>
                       <TableCell>{shipment.value.toLocaleString()}</TableCell>
