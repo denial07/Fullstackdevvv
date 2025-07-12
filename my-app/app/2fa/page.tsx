@@ -83,6 +83,12 @@ export default function TwoFactorPage() {
           // Store user data in localStorage
           localStorage.setItem("user", JSON.stringify(loginData.user))
           
+          // Check if remember me was enabled and save email
+          const rememberMe = localStorage.getItem('rememberMe') === 'true'
+          if (rememberMe) {
+            localStorage.setItem('rememberedEmail', email)
+          }
+          
           // Clear 2FA email from localStorage
           localStorage.removeItem("2fa-email")
           
