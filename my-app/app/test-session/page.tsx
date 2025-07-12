@@ -73,7 +73,7 @@ export default function TestSessionPage() {
               <ul className="text-sm text-gray-600 space-y-1">
                 <li>• Auto-logout triggers after {sessionTimeout} minutes of inactivity</li>
                 <li>• Activity includes mouse movement, clicks, keyboard input, scrolling</li>
-                <li>• When timeout occurs, you'll be redirected to login page</li>
+                <li>• When timeout occurs, you&apos;ll be redirected to login page</li>
                 <li>• Session timeout can be changed in Settings → Security</li>
                 <li>• Try being inactive for {sessionTimeout} minutes to test auto-logout</li>
               </ul>
@@ -92,3 +92,4 @@ export default function TestSessionPage() {
     </div>
   )
 }
+ 
