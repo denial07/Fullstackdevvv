@@ -30,7 +30,45 @@ export default function LoginPage() {
     if (reason === 'timeout') {
       setTimeoutMessage("Your session has expired due to inactivity. Please log in again.")
     }
+
+    // Check if remember me was previously enabled and load saved email
+    const savedRememberMe = localStorage.getItem('rememberMe') === 'true'
+    const savedEmail = localStorage.getItem('rememberedEmail')
+    
+    if (savedRememberMe && savedEmail) {
+      setRememberMe(true)
+      setEmail(savedEmail)
+    }
   }, [searchParams])
+
+  const handleRememberMeChange = async (checked: boolean) => {
+    setRememberMe(checked)
+    
+    if (checked) {
+      // When remember me is enabled, fetch and autofill the latest email
+      try {
+        const response = await fetch('/api/latest-email')
+        const data = await response.json()
+        
+        if (response.ok && data.email) {
+          setEmail(data.email)
+          // Save the preference and email to localStorage
+          localStorage.setItem('rememberMe', 'true')
+          localStorage.setItem('rememberedEmail', data.email)
+        } else {
+          console.log('No email found or API error:', data.message)
+        }
+      } catch (error) {
+        console.error('Failed to fetch latest email:', error)
+      }
+    } else {
+      // When remember me is disabled, clear localStorage
+      localStorage.removeItem('rememberMe')
+      localStorage.removeItem('rememberedEmail')
+      // Optionally clear the email field
+      setEmail('')
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,6 +102,12 @@ export default function LoginPage() {
 
       // Store user session (normal login without 2FA)
       localStorage.setItem('user', JSON.stringify(data.user));
+      
+      // Save email if remember me is checked
+      if (rememberMe) {
+        localStorage.setItem('rememberMe', 'true')
+        localStorage.setItem('rememberedEmail', email)
+      }
       
       // Redirect to dashboard
       router.push("/");
@@ -155,7 +199,7 @@ export default function LoginPage() {
                   <Checkbox
                     id="remember"
                     checked={rememberMe}
-                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                    onCheckedChange={(checked) => handleRememberMeChange(checked as boolean)}
                   />
                   <Label htmlFor="remember" className="text-sm">
                     Remember me
