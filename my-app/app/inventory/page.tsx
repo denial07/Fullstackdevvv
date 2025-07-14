@@ -122,6 +122,242 @@ export default function InventoryPage() {
   const [deletingItem, setDeletingItem] = useState<string | null>(null)
   const router = useRouter()
 
+  // Add column configuration and drag-and-drop state
+  const defaultColumns = [
+    { key: "id", label: "Item ID", width: "w-24" },
+    { key: "item", label: "Item Name", width: "w-40" },
+    { key: "category", label: "Category", width: "w-28" },
+    { key: "quantity", label: "Quantity", width: "w-32" },
+    { key: "stockLevel", label: "Stock Level", width: "w-32" },
+    { key: "location", label: "Location", width: "w-32" },
+    { key: "receivedDate", label: "Received Date", width: "w-28" },
+    { key: "expiryDate", label: "Expiry Date", width: "w-28" },
+    { key: "daysToExpiry", label: "Days to Expiry", width: "w-32" },
+    { key: "status", label: "Status", width: "w-28" },
+    { key: "value", label: "Value (S$)", width: "w-24" },
+    { key: "actions", label: "Actions", width: "w-20" },
+  ]
+
+  const [columnOrder, setColumnOrder] = useState(defaultColumns)
+  const [draggedColumn, setDraggedColumn] = useState<number | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<number | null>(null)
+
+  // Load column order from localStorage on component mount
+  useEffect(() => {
+    const savedOrder = localStorage.getItem("inventory-column-order")
+    if (savedOrder) {
+      try {
+        setColumnOrder(JSON.parse(savedOrder))
+      } catch (error) {
+        console.error("Failed to load column order:", error)
+      }
+    }
+  }, [])
+
+  // Save column order to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem("inventory-column-order", JSON.stringify(columnOrder))
+  }, [columnOrder])
+
+  // Drag and drop handlers with proper TypeScript types
+  const handleDragStart = (e: React.DragEvent<HTMLTableCellElement>, index: number) => {
+    setDraggedColumn(index)
+    e.dataTransfer.effectAllowed = "move"
+    e.dataTransfer.setData("text/html", e.currentTarget.outerHTML)
+
+    // Type assertion for style manipulation
+    const target = e.currentTarget as HTMLElement
+    target.style.opacity = "0.5"
+  }
+
+  const handleDragEnd = (e: React.DragEvent<HTMLTableCellElement>) => {
+    // Type assertion for style manipulation
+    const target = e.currentTarget as HTMLElement
+    target.style.opacity = "1"
+
+    setDraggedColumn(null)
+    setDragOverColumn(null)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLTableCellElement>, index: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+    setDragOverColumn(index)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverColumn(null)
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLTableCellElement>, dropIndex: number) => {
+    e.preventDefault()
+
+    if (draggedColumn === null || draggedColumn === dropIndex) return
+
+    const newColumnOrder = [...columnOrder]
+    const draggedItem = newColumnOrder[draggedColumn]
+
+    // Remove dragged item
+    newColumnOrder.splice(draggedColumn, 1)
+
+    // Insert at new position
+    const insertIndex = draggedColumn < dropIndex ? dropIndex - 1 : dropIndex
+    newColumnOrder.splice(insertIndex, 0, draggedItem)
+
+    setColumnOrder(newColumnOrder)
+    setDraggedColumn(null)
+    setDragOverColumn(null)
+  }
+
+  const resetColumnOrder = () => {
+    setColumnOrder(defaultColumns)
+    localStorage.removeItem("inventory-column-order")
+  }
+
+  // Function to render cell content based on column key
+  const renderCellContent = (item: InventoryItem, columnKey: string) => {
+    const stockPercentage = (item.quantity / item.maxStock) * 100
+    const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+    const isEditing = editingStock[item.id]
+    const isSaving = savingStock[item.id]
+
+    switch (columnKey) {
+      case "id":
+        return <span className="font-medium">{item.id}</span>
+      case "item":
+        return item.item
+      case "category":
+        return item.category
+      case "quantity":
+        return (
+          <div className="edit-controls flex items-center space-x-2">
+            {isEditing ? (
+              <div className="flex items-center space-x-2">
+                <Input
+                  type="number"
+                  value={editingValues[item.id] || 0}
+                  onChange={(e) =>
+                    setEditingValues((prev) => ({
+                      ...prev,
+                      [item.id]: Number.parseInt(e.target.value) || 0,
+                    }))
+                  }
+                  className="w-20 h-8"
+                  min="0"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <span className="text-sm text-gray-500">{item.unit}</span>
+                <div className="flex space-x-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      saveStockLevel(item.id, item.item)
+                    }}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4 text-green-600" />
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      cancelEditingStock(item.id)
+                    }}
+                    disabled={isSaving}
+                  >
+                    <XCircle className="h-4 w-4 text-red-600" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <span>
+                  {item.quantity} {item.unit}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    startEditingStock(item.id, item.quantity)
+                  }}
+                >
+                  <Edit3 className="h-4 w-4 text-blue-600" />
+                </Button>
+              </div>
+            )}
+          </div>
+        )
+      case "stockLevel":
+        return (
+          <div className="space-y-1">
+            <Progress value={stockPercentage} className="h-2" />
+            <div className="text-xs text-gray-500">
+              {item.quantity}/{item.maxStock} {item.unit}
+            </div>
+          </div>
+        )
+      case "location":
+        return item.location
+      case "receivedDate":
+        return item.receivedDate
+      case "expiryDate":
+        return item.expiryDate
+      case "daysToExpiry":
+        return (
+          <span
+            className={
+              daysToExpiry < 0
+                ? "text-red-600 font-medium"
+                : daysToExpiry < 30
+                  ? "text-orange-600 font-medium"
+                  : "text-green-600"
+            }
+          >
+            {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)} days overdue` : `${daysToExpiry} days`}
+          </span>
+        )
+      case "status":
+        return (
+          <div className="flex items-center space-x-2">
+            {getStatusIcon(item.status)}
+            <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
+          </div>
+        )
+      case "value":
+        return (item.quantity * item.costPerUnit).toLocaleString()
+      case "actions":
+        return (
+          <div className="edit-controls flex items-center space-x-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+              onClick={(e) => {
+                e.stopPropagation()
+                setDeleteDialog({ open: true, item })
+              }}
+              title="Delete item"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )
+      default:
+        return null
+    }
+  }
+
   useEffect(() => {
     fetchInventory()
   }, [])
@@ -434,7 +670,7 @@ export default function InventoryPage() {
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
-              <Button size="sm">Import</Button>
+              <Button size="sm">Add Item</Button>
             </div>
           </div>
         </div>
@@ -794,158 +1030,57 @@ export default function InventoryPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-600">Drag column headers to reorder</span>
+                      <Button variant="outline" size="sm" onClick={resetColumnOrder} className="text-xs bg-transparent">
+                        Reset Order
+                      </Button>
+                    </div>
+                  </div>
+
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Item ID</TableHead>
-                        <TableHead>Item Name</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Stock Level</TableHead>
-                        <TableHead>Location</TableHead>
-                        <TableHead>Received Date</TableHead>
-                        <TableHead>Expiry Date</TableHead>
-                        <TableHead>Days to Expiry</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Value (S$)</TableHead>
-                        <TableHead>Actions</TableHead>
+                        {columnOrder.map((column, index) => (
+                          <TableHead
+                            key={column.key}
+                            className={`${column.width} cursor-move select-none transition-colors ${
+                              dragOverColumn === index ? "bg-blue-100 border-l-2 border-blue-500" : ""
+                            } ${draggedColumn === index ? "opacity-50" : ""}`}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, index)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => handleDrop(e, index)}
+                          >
+                            <div className="flex items-center space-x-2">
+                              <span>{column.label}</span>
+                              <div className="flex flex-col space-y-0.5 opacity-50">
+                                <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                                <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                                <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                              </div>
+                            </div>
+                          </TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredInventory.map((item) => {
-                        const stockPercentage = (item.quantity / item.maxStock) * 100
-                        const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
-                        const isEditing = editingStock[item.id]
-                        const isSaving = savingStock[item.id]
-
-                        return (
-                          <TableRow
-                            key={item._id}
-                            className="cursor-pointer hover:bg-gray-50 transition-colors"
-                            onClick={(e) => handleRowClick(item.id, e)}
-                          >
-                            <TableCell className="font-medium">{item.id}</TableCell>
-                            <TableCell>{item.item}</TableCell>
-                            <TableCell>{item.category}</TableCell>
-                            <TableCell>
-                              <div className="edit-controls flex items-center space-x-2">
-                                {isEditing ? (
-                                  <div className="flex items-center space-x-2">
-                                    <Input
-                                      type="number"
-                                      value={editingValues[item.id] || 0}
-                                      onChange={(e) =>
-                                        setEditingValues((prev) => ({
-                                          ...prev,
-                                          [item.id]: Number.parseInt(e.target.value) || 0,
-                                        }))
-                                      }
-                                      className="w-20 h-8"
-                                      min="0"
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
-                                    <span className="text-sm text-gray-500">{item.unit}</span>
-                                    <div className="flex space-x-1">
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-8 w-8 p-0"
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          saveStockLevel(item.id, item.item)
-                                        }}
-                                        disabled={isSaving}
-                                      >
-                                        {isSaving ? (
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                          <Check className="h-4 w-4 text-green-600" />
-                                        )}
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-8 w-8 p-0"
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          cancelEditingStock(item.id)
-                                        }}
-                                        disabled={isSaving}
-                                      >
-                                        <XCircle className="h-4 w-4 text-red-600" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center space-x-2">
-                                    <span>
-                                      {item.quantity} {item.unit}
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        startEditingStock(item.id, item.quantity)
-                                      }}
-                                    >
-                                      <Edit3 className="h-4 w-4 text-blue-600" />
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
+                      {filteredInventory.map((item) => (
+                        <TableRow
+                          key={item._id}
+                          className="cursor-pointer hover:bg-gray-50 transition-colors group"
+                          onClick={(e) => handleRowClick(item.id, e)}
+                        >
+                          {columnOrder.map((column) => (
+                            <TableCell key={`${item._id}-${column.key}`} className={column.width}>
+                              {renderCellContent(item, column.key)}
                             </TableCell>
-                            <TableCell>
-                              <div className="space-y-1">
-                                <Progress value={stockPercentage} className="h-2" />
-                                <div className="text-xs text-gray-500">
-                                  {item.quantity}/{item.maxStock} {item.unit}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>{item.location}</TableCell>
-                            <TableCell>{item.receivedDate}</TableCell>
-                            <TableCell>{item.expiryDate}</TableCell>
-                            <TableCell>
-                              <span
-                                className={
-                                  daysToExpiry < 0
-                                    ? "text-red-600 font-medium"
-                                    : daysToExpiry < 30
-                                      ? "text-orange-600 font-medium"
-                                      : "text-green-600"
-                                }
-                              >
-                                {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)} days overdue` : `${daysToExpiry} days`}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center space-x-2">
-                                {getStatusIcon(item.status)}
-                                <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
-                              </div>
-                            </TableCell>
-                            <TableCell>{(item.quantity * item.costPerUnit).toLocaleString()}</TableCell>
-                            <TableCell>
-                              <div className="edit-controls flex items-center space-x-2">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setDeleteDialog({ open: true, item })
-                                  }}
-                                  title="Delete item"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
+                          ))}
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </div>
