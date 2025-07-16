@@ -2,56 +2,120 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, Lock, Mail, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, Lock, Mail, AlertCircle, Clock } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 export default function LoginPage() {
+  const searchParams = useSearchParams()
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+  const [timeoutMessage, setTimeoutMessage] = useState("")
   const router = useRouter()
+
+  useEffect(() => {
+    // Check if user was redirected due to session timeout
+    const reason = searchParams.get('reason')
+    if (reason === 'timeout') {
+      setTimeoutMessage("Your session has expired due to inactivity. Please log in again.")
+    }
+
+    // Check if remember me was previously enabled and load saved email
+    const savedRememberMe = localStorage.getItem('rememberMe') === 'true'
+    const savedEmail = localStorage.getItem('rememberedEmail')
+    
+    if (savedRememberMe && savedEmail) {
+      setRememberMe(true)
+      setEmail(savedEmail)
+    }
+  }, [searchParams])
+
+  const handleRememberMeChange = async (checked: boolean) => {
+    setRememberMe(checked)
+    
+    if (checked) {
+      // When remember me is enabled, fetch and autofill the latest email
+      try {
+        const response = await fetch('/api/latest-email')
+        const data = await response.json()
+        
+        if (response.ok && data.email) {
+          setEmail(data.email)
+          // Save the preference and email to localStorage
+          localStorage.setItem('rememberMe', 'true')
+          localStorage.setItem('rememberedEmail', data.email)
+        } else {
+          console.log('No email found or API error:', data.message)
+        }
+      } catch (error) {
+        console.error('Failed to fetch latest email:', error)
+      }
+    } else {
+      // When remember me is disabled, clear localStorage
+      localStorage.removeItem('rememberMe')
+      localStorage.removeItem('rememberedEmail')
+      // Optionally clear the email field
+      setEmail('')
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
 
-    // Simulate login process
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Call the actual login API
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-      // Mock authentication - in real app, this would be an API call
-      if (email === "admin@palletworks.sg" && password === "admin123") {
-        // Store user session (in real app, use proper auth tokens)
-        localStorage.setItem(
-          "user",
-          JSON.stringify({
-            id: "1",
-            email: "admin@palletworks.sg",
-            name: "Admin User",
-            role: "Administrator",
-            company: "Singapore Pallet Works",
-          }),
-        )
-        router.push("/")
-      } else {
-        setError("Invalid email or password. Try admin@palletworks.sg / admin123")
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
       }
+
+      // Check if 2FA is required
+      if (data.requires2FA) {
+        // Store email for 2FA verification
+        localStorage.setItem('2fa-email', data.email);
+        // Redirect to 2FA page
+        router.push(`/2fa?email=${encodeURIComponent(data.email)}`);
+        return;
+      }
+
+      // Store user session (normal login without 2FA)
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      // Save email if remember me is checked
+      if (rememberMe) {
+        localStorage.setItem('rememberMe', 'true')
+        localStorage.setItem('rememberedEmail', email)
+      }
+      
+      // Redirect to dashboard
+      router.push("/");
+      
     } catch (err) {
-      setError("Login failed. Please try again.")
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 
@@ -75,6 +139,15 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {timeoutMessage && (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <Clock className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800">
+                    {timeoutMessage}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -126,13 +199,13 @@ export default function LoginPage() {
                   <Checkbox
                     id="remember"
                     checked={rememberMe}
-                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                    onCheckedChange={(checked) => handleRememberMeChange(checked as boolean)}
                   />
                   <Label htmlFor="remember" className="text-sm">
                     Remember me
                   </Label>
                 </div>
-                <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-500">
+                <Link href="/reset" className="text-sm text-blue-600 hover:text-blue-500">
                   Forgot password?
                 </Link>
               </div>
@@ -165,8 +238,8 @@ export default function LoginPage() {
         {/* Footer */}
         <div className="text-center">
           <p className="text-sm text-gray-600">
-            Don't have an account?{" "}
-            <Link href="/register" className="text-blue-600 hover:text-blue-500">
+            Don&apos;t have an account?{" "}
+            <Link href="/contact-admin" className="text-blue-600 hover:text-blue-500">
               Contact administrator
             </Link>
           </p>
