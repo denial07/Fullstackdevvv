@@ -39,6 +39,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check if 2FA is enabled
+    if (user.twoFactorEnabled) {
+      // Return special response indicating 2FA is required
+      return NextResponse.json({
+        requires2FA: true,
+        email: user.email,
+        message: "2FA verification required"
+      });
+    }
+
     // Create a simple session token (in production, use proper JWT)
     const sessionToken = Buffer.from(
       JSON.stringify({
@@ -57,6 +67,42 @@ export async function POST(req: NextRequest) {
       role: user.role,
       company: user.company,
     };
+
+    // Check for new device and send login alert if needed (non-blocking)
+    // This runs in the background and won't affect the login process
+    setImmediate(async () => {
+      try {
+        const userAgent = req.headers.get('user-agent') || 'Unknown';
+        const ipAddress = req.headers.get('x-forwarded-for') || 
+                         req.headers.get('x-real-ip') || 
+                         'Unknown';
+
+        console.log(`🔔 Attempting login alert check for: ${user.email}`);
+
+        const alertResponse = await fetch(`${req.nextUrl.origin}/api/login-alert`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: user.email,
+            ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress.split(',')[0].trim(),
+            userAgent
+          }),
+        });
+
+        if (alertResponse.ok) {
+          const alertData = await alertResponse.json();
+          console.log(`🔔 Login alert check completed:`, alertData.message);
+        } else {
+          const errorData = await alertResponse.json();
+          console.log(`⚠️ Login alert failed (non-critical):`, errorData);
+        }
+      } catch (alertError) {
+        console.error("⚠️ Login alert check failed (non-critical):", alertError);
+        // Silently fail - don't affect the main login process
+      }
+    });
 
     // Set HTTP-only cookie with the session token
     const response = NextResponse.json({
