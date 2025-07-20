@@ -1,9 +1,11 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+"use client"
+
+import { useState } from "react"
+import { toast } from "sonner"
 import { ArrowLeft, Send, Building2, MapPin, Mail, Package, AlertTriangle, CheckCircle } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { Navbar } from "@/components/navbar"
 
 // Mock data for different materials
 const materialData: Record<string, any> = {
@@ -87,15 +89,15 @@ const materialData: Record<string, any> = {
 const getStatusColor = (status: string) => {
   switch (status) {
     case "Good":
-      return "default"
+      return "bg-green-100 text-green-800"
     case "Low Stock":
-      return "secondary"
+      return "bg-yellow-100 text-yellow-800"
     case "Expiring Soon":
-      return "destructive"
+      return "bg-orange-100 text-orange-800"
     case "Expired":
-      return "destructive"
+      return "bg-red-100 text-red-800"
     default:
-      return "secondary"
+      return "bg-gray-100 text-gray-800"
   }
 }
 
@@ -115,6 +117,9 @@ const getStatusIcon = (status: string) => {
 }
 
 export default function MaterialDetailPage({ params }: { params: { id: string } }) {
+  const [showOrderDialog, setShowOrderDialog] = useState(false)
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false)
+  const router = useRouter()
   const material = materialData[params.id]
 
   if (!material) {
@@ -122,55 +127,97 @@ export default function MaterialDetailPage({ params }: { params: { id: string } 
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Material Not Found</h1>
-          <Button asChild>
-            <Link href="/inventory">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Inventory
-            </Link>
-          </Button>
+          <Link
+            href="/inventory"
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Inventory
+          </Link>
         </div>
       </div>
     )
   }
 
+  const handlePlaceOrder = async () => {
+    setIsPlacingOrder(true)
+
+    // Show loading toast
+    const loadingToast = toast.loading("Placing your order...", {
+      description: "Please wait while we process your order",
+    })
+
+    try {
+      // Simulate API call delay
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      // Dismiss loading toast
+      toast.dismiss(loadingToast)
+
+      // Show success toast
+      toast.success("Order Placed Successfully! 🎉", {
+        description: `Order for ${material.suggestedOrder} ${material.unit} of ${material.name} has been placed with ${material.supplier}.`,
+        duration: 4000,
+        action: {
+          label: "View Orders",
+          onClick: () => console.log("View orders clicked"),
+        },
+      })
+
+      setShowOrderDialog(false)
+
+      // Redirect to inventory page after a short delay
+      setTimeout(() => {
+        router.push("/inventory")
+      }, 2000)
+    } catch (error) {
+      // Dismiss loading toast
+      toast.dismiss(loadingToast)
+
+      // Show error toast
+      toast.error("Order Failed", {
+        description: "There was an error placing your order. Please try again.",
+        duration: 4000,
+      })
+    } finally {
+      setIsPlacingOrder(false)
+    }
+  }
+
+  const totalOrderValue = material.suggestedOrder * material.costPerUnit
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-6">
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/inventory">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Inventory
-                </Link>
-              </Button>
-              <div>
-                <div className="flex items-center space-x-3">
-                  <h1 className="text-3xl font-bold text-gray-900">Material: {material.name}</h1>
-                  <div className="flex items-center space-x-2">
-                    {getStatusIcon(material.status)}
-                    <Badge variant={getStatusColor(material.status)}>{material.status}</Badge>
-                  </div>
+      <Navbar />
+
+      {/* Material Header - moved below navbar */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center space-x-4">
+            <div className="flex-1">
+              <div className="flex items-center space-x-3">
+                <h1 className="text-3xl font-bold text-gray-900">Material: {material.name}</h1>
+                <div className="flex items-center space-x-2">
+                  {getStatusIcon(material.status)}
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(material.status)}`}>
+                    {material.status}
+                  </span>
                 </div>
-                <p className="text-gray-600">Item ID: {material.id}</p>
               </div>
+              <p className="text-gray-600">Item ID: {material.id}</p>
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Material and Company Info */}
           <div className="lg:col-span-2 space-y-6">
             {/* Material Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">Material Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h2 className="text-xl font-semibold mb-4">Material Information</h2>
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium text-gray-500">Name:</label>
@@ -216,18 +263,16 @@ export default function MaterialDetailPage({ params }: { params: { id: string } 
                     ))}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* Company Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl flex items-center">
-                  <Building2 className="h-5 w-5 mr-2" />
-                  Company Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center">
+                <Building2 className="h-5 w-5 mr-2" />
+                Company Information
+              </h2>
+              <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Name:</label>
                   <p className="text-lg font-semibold">{material.supplier}</p>
@@ -246,37 +291,43 @@ export default function MaterialDetailPage({ params }: { params: { id: string } 
                   </label>
                   <p className="text-lg">{material.supplierEmail}</p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* Order Suggestion */}
-            <Card className="border-orange-200 bg-orange-50">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-orange-900">
-                      Suggestion: Order {material.suggestedOrder} Units
-                    </h3>
-                    <p className="text-sm text-orange-700 mt-1">
-                      Current stock is below minimum threshold. Recommended reorder quantity based on usage patterns.
-                    </p>
-                  </div>
-                  <Button className="bg-orange-600 hover:bg-orange-700">Place Order</Button>
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-orange-900">
+                    Suggestion: Order {material.suggestedOrder} {material.unit}
+                  </h3>
+                  <p className="text-sm text-orange-700 mt-1">
+                    Current stock is below minimum threshold. Recommended reorder quantity based on usage patterns.
+                  </p>
+                  <p className="text-sm text-orange-600 mt-2 font-medium">
+                    Total Order Value: S${totalOrderValue.toLocaleString()}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+                <button
+                  onClick={() => setShowOrderDialog(true)}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium"
+                >
+                  Place Order
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Right Column - Chat Interface */}
           <div className="lg:col-span-1">
-            <Card className="h-[600px] flex flex-col">
-              <CardHeader className="flex-shrink-0">
-                <CardTitle className="flex items-center">
+            <div className="bg-white rounded-lg shadow-sm border h-[600px] flex flex-col">
+              <div className="p-4 border-b">
+                <h2 className="font-semibold flex items-center">
                   <Building2 className="h-5 w-5 mr-2" />
                   Company Chat
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col">
+                </h2>
+              </div>
+              <div className="flex-1 flex flex-col p-4">
                 {/* Chat Messages Area */}
                 <div className="flex-1 bg-gray-50 rounded-lg p-4 mb-4 overflow-y-auto">
                   <div className="space-y-4">
@@ -299,19 +350,91 @@ export default function MaterialDetailPage({ params }: { params: { id: string } 
                 </div>
 
                 {/* Chat Input */}
-                <div className="flex-shrink-0">
-                  <div className="flex space-x-2">
-                    <Input placeholder="Type something here..." className="flex-1" />
-                    <Button size="icon" className="flex-shrink-0">
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    placeholder="Type something here..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    <Send className="h-4 w-4" />
+                  </button>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </div>
       </main>
+
+      {/* Order Confirmation Dialog */}
+      {showOrderDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center mb-4">
+              <Package className="h-5 w-5 mr-2 text-orange-600" />
+              <h3 className="text-lg font-semibold">Confirm Order Placement</h3>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <p>Are you sure you want to place this order?</p>
+
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span className="font-medium">Material:</span>
+                  <span>{material.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Quantity:</span>
+                  <span>
+                    {material.suggestedOrder} {material.unit}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Supplier:</span>
+                  <span>{material.supplier}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Unit Price:</span>
+                  <span>S${material.costPerUnit}</span>
+                </div>
+                <hr className="my-2" />
+                <div className="flex justify-between font-semibold text-lg">
+                  <span>Total Value:</span>
+                  <span className="text-orange-600">S${totalOrderValue.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-600">
+                This order will be sent to {material.supplier} and you will receive a confirmation email shortly.
+              </p>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowOrderDialog(false)}
+                disabled={isPlacingOrder}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePlaceOrder}
+                disabled={isPlacingOrder}
+                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center justify-center"
+              >
+                {isPlacingOrder ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Placing Order...
+                  </>
+                ) : (
+                  "Confirm Order"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

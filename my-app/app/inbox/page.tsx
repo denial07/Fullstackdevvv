@@ -12,7 +12,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
-  ArrowLeft,
   Search,
   RefreshCw,
   Archive,
@@ -39,7 +38,7 @@ import {
   EyeOff,
   X,
 } from "lucide-react"
-import Link from "next/link"
+import { Navbar } from "@/components/navbar"
 
 interface Email {
   id: string
@@ -289,22 +288,15 @@ export default function InboxPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-6">
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Dashboard
-                </Link>
-              </Button>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Inbox</h1>
-                <p className="text-gray-600">
-                  {unreadCount} unread message{unreadCount !== 1 ? "s" : ""} • {emails.length} total
-                </p>
-              </div>
+      <Navbar />
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Inbox</h1>
+              <p className="text-gray-600">
+                {unreadCount} unread message{unreadCount !== 1 ? "s" : ""} • {emails.length} total
+              </p>
             </div>
             <div className="flex space-x-2">
               <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
@@ -318,7 +310,7 @@ export default function InboxPage() {
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
