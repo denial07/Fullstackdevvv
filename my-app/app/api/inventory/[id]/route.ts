@@ -2,8 +2,11 @@ import { connectToDatabase } from "@/lib/mongodb"
 import Inventory from "@/lib/models/Inventory"
 import { NextResponse } from "next/server"
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, context: { params: { id: string } }) {
+  const { params } = context
   try {
+    console.log(`🔄 API: Fetching inventory item ${params.id}...`)
+
     await connectToDatabase()
 
     const item = await Inventory.findOne({ id: params.id })
@@ -12,6 +15,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
 
+    console.log(`✅ API: Successfully fetched item ${params.id}`)
     return NextResponse.json(item)
   } catch (error: any) {
     console.error("❌ API Error fetching item:", error)
@@ -19,13 +23,15 @@ export async function GET(request: Request, { params }: { params: { id: string }
       {
         error: "Failed to fetch item",
         details: error.message,
+        errorType: error.name,
       },
       { status: 500 },
     )
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, context: { params: { id: string } }) {
+  const { params } = context
   try {
     console.log(`🔄 API: Updating inventory item ${params.id}...`)
 
@@ -100,7 +106,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, context: { params: { id: string } }) {
+  const { params } = context
   try {
     console.log(`🔄 API: Deleting inventory item ${params.id}...`)
 
