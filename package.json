@@ -1,6 +1,8 @@
 {
   "dependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "bcryptjs": "^3.0.2"
+    "bcryptjs": "^3.0.2",
+    "nodemailer": "^7.0.5",
+    "qrcode": "^1.5.4"
   }
 }
