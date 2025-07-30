@@ -78,7 +78,7 @@ export default async function ShipmentsPage() {
               </Button>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Shipment Management</h1>
-                <p className="text-gray-600">Track incoming and outgoing shipments</p>
+                <p className="text-gray-600">Track incoming and internal shipments</p>
               </div>
             </div>
             <div className="flex space-x-2">
@@ -145,7 +145,7 @@ export default async function ShipmentsPage() {
         <Tabs defaultValue="incoming" className="space-y-6">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="incoming">Incoming Shipments</TabsTrigger>
-            <TabsTrigger value="outgoing">Outgoing Shipments</TabsTrigger>
+            <TabsTrigger value="outgoing">Internal Shipments</TabsTrigger>
           </TabsList>
 
           <TabsContent value="incoming">
@@ -180,15 +180,15 @@ export default async function ShipmentsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center">
                   <Truck className="h-5 w-5 mr-2" />
-                  Outgoing Shipments
+                  Internal Shipments
                 </CardTitle>
-                <CardDescription>Pallet deliveries to customers</CardDescription>
+                <CardDescription>Pallet deliveries Internally</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex justify-between items-center mb-4">
                   <p className="text-sm text-gray-600">Track customer order deliveries</p>
                   <Button asChild>
-                    <Link href="/shipments/outgoing">View Detailed Outgoing</Link>
+                    <Link href="/shipments/outgoing">View Detailed Internal</Link>
                   </Button>
                 </div>
 
