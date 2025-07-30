@@ -16,6 +16,20 @@ export interface ShipmentDoc extends Document {
     shippingDate?: Date;
     createdAt?: Date;
     updatedAt?: Date;
+    // Email-specific metadata (optional)
+    emailMetadata?: {
+        emailId?: string;
+        trackingNumber?: string;
+        shipmentId?: string;
+        carrier?: string;
+        urgency?: string;
+        actionRequired?: boolean;
+        notes?: string;
+        suggestedAction?: string;
+        emailSubject?: string;
+        emailFrom?: any;
+        emailTimestamp?: Date;
+    };
 }
 
 const ShipmentSchema = new Schema<ShipmentDoc>(
@@ -32,6 +46,20 @@ const ShipmentSchema = new Schema<ShipmentDoc>(
         newEta: Date,
         deliveredDate: Date,
         shippingDate: Date,
+        // Email-specific metadata for AI-analyzed shipments
+        emailMetadata: {
+            emailId: String,
+            trackingNumber: String,
+            shipmentId: String,
+            carrier: String,
+            urgency: String,
+            actionRequired: Boolean,
+            notes: String,
+            suggestedAction: String,
+            emailSubject: String,
+            emailFrom: Schema.Types.Mixed,
+            emailTimestamp: Date
+        }
     },
     { timestamps: true }
 );
