@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Search,
   RefreshCw,
@@ -25,20 +24,18 @@ import {
   Forward,
   MoreHorizontal,
   Paperclip,
-  Users,
-  Tag,
-  Filter,
-  Settings,
-  Inbox,
-  Send,
-  FileText,
   AlertCircle,
   Download,
   Eye,
   EyeOff,
   X,
+  Inbox,
+  Bell,
+  Loader2,
+  CloudDownload,
 } from "lucide-react"
 import { Navbar } from "@/components/navbar"
+import { toast } from "sonner"
 
 interface Email {
   id: string
@@ -56,152 +53,25 @@ interface Email {
   hasAttachments: boolean
   labels: string[]
   priority: "high" | "normal" | "low"
-  category: "primary" | "social" | "promotions" | "updates" | "forums"
+  category: "primary" | "updates"
+  threadId?: string
 }
 
-// Mock email data
-const mockEmails: Email[] = [
-  {
-    id: "1",
-    from: {
-      name: "Malaysian Timber Co.",
-      email: "orders@malaytimber.com",
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    subject: "Order Confirmation - Teak Wood Planks (INV-001)",
-    preview:
-      "Thank you for your order! Your teak wood planks order has been confirmed and will be shipped within 3-5 business days...",
-    body: "Dear Valued Customer,\n\nThank you for your recent order of Teak Wood Planks (INV-001). We are pleased to confirm that your order has been received and is being processed.\n\nOrder Details:\n- Item: Teak Wood Planks\n- Quantity: 100 m³\n- Unit Price: S$850\n- Total: S$85,000\n\nEstimated delivery: 3-5 business days\n\nBest regards,\nMalaysian Timber Co.",
-    timestamp: "2 hours ago",
-    isRead: false,
-    isStarred: true,
-    hasAttachments: true,
-    labels: ["Orders", "Suppliers"],
-    priority: "high",
-    category: "primary",
-  },
-  {
-    id: "2",
-    from: {
-      name: "Indonesian Wood Supply",
-      email: "support@indowood.co.id",
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    subject: "Price Update - Pine Wood Boards",
-    preview: "We're writing to inform you about updated pricing for our pine wood boards effective next month...",
-    body: "Dear Partner,\n\nWe hope this email finds you well. We're writing to inform you about updated pricing for our pine wood boards, effective from next month.\n\nNew pricing:\n- Pine Wood Boards: S$450 per m³ (previously S$420)\n\nThis adjustment reflects current market conditions and ensures we continue to provide you with the highest quality materials.\n\nThank you for your understanding.\n\nBest regards,\nIndonesian Wood Supply Team",
-    timestamp: "5 hours ago",
-    isRead: true,
-    isStarred: false,
-    hasAttachments: false,
-    labels: ["Pricing", "Suppliers"],
-    priority: "normal",
-    category: "primary",
-  },
-  {
-    id: "3",
-    from: {
-      name: "Warehouse Management System",
-      email: "alerts@warehouse.com",
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    subject: "Low Stock Alert - Multiple Items",
-    preview:
-      "URGENT: Several items in your inventory have fallen below minimum stock levels and require immediate attention...",
-    body: "URGENT STOCK ALERT\n\nThe following items have fallen below minimum stock levels:\n\n1. Plywood Sheets (INV-006) - Current: 15 m³, Minimum: 25 m³\n2. Mahogany Boards (INV-005) - Current: 10 m³, Minimum: 20 m³\n3. Birch Wood Panels (INV-008) - Current: 18 m³, Minimum: 20 m³\n\nImmediate action required to prevent stockouts.\n\nWarehouse Management System",
-    timestamp: "1 day ago",
-    isRead: false,
-    isStarred: true,
-    hasAttachments: false,
-    labels: ["Alerts", "Inventory"],
-    priority: "high",
-    category: "updates",
-  },
-  {
-    id: "4",
-    from: {
-      name: "Thai Forest Products",
-      email: "sales@thaiforest.com",
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    subject: "New Product Catalog - Premium Hardwoods",
-    preview: "Discover our latest collection of premium hardwoods sourced from sustainable Thai forests...",
-    body: "Dear Valued Customer,\n\nWe're excited to share our new product catalog featuring premium hardwoods sourced from sustainable Thai forests.\n\nNew additions include:\n- Premium Teak (Grade A+)\n- Exotic Rosewood\n- Sustainable Bamboo Products\n\nSpecial launch pricing available for the first 30 days.\n\nBest regards,\nThai Forest Products",
-    timestamp: "2 days ago",
-    isRead: true,
-    isStarred: false,
-    hasAttachments: true,
-    labels: ["Catalogs", "Suppliers"],
-    priority: "normal",
-    category: "promotions",
-  },
-  {
-    id: "5",
-    from: {
-      name: "Logistics Partner",
-      email: "tracking@logistics.com",
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    subject: "Shipment Delivered - Tracking #LP789456",
-    preview: "Your shipment has been successfully delivered to Warehouse A-1. Please confirm receipt...",
-    body: "Delivery Confirmation\n\nTracking Number: LP789456\nDelivery Date: Today, 2:30 PM\nLocation: Warehouse A-1\nRecipient: Warehouse Manager\n\nItems delivered:\n- Cedar Planks (28 m³)\n- Delivery in good condition\n\nPlease confirm receipt in your system.\n\nLogistics Partner",
-    timestamp: "3 days ago",
-    isRead: true,
-    isStarred: false,
-    hasAttachments: false,
-    labels: ["Logistics", "Deliveries"],
-    priority: "normal",
-    category: "updates",
-  },
-  {
-    id: "6",
-    from: {
-      name: "Quality Assurance Team",
-      email: "qa@company.com",
-      avatar: "/placeholder.svg?height=40&width=40",
-    },
-    subject: "Monthly Quality Report - December 2024",
-    preview: "Please find attached the monthly quality assurance report for all incoming materials...",
-    body: "Monthly Quality Report - December 2024\n\nDear Team,\n\nPlease find attached our comprehensive quality assurance report for December 2024.\n\nKey highlights:\n- 98.5% pass rate for incoming materials\n- 3 minor quality issues resolved\n- New testing protocols implemented\n\nDetailed analysis and recommendations are included in the attached report.\n\nQuality Assurance Team",
-    timestamp: "1 week ago",
-    isRead: true,
-    isStarred: false,
-    hasAttachments: true,
-    labels: ["Reports", "Quality"],
-    priority: "normal",
-    category: "primary",
-  },
-]
-
 const categories = [
-  { key: "primary", label: "Primary", icon: Inbox, count: 4 },
-  { key: "social", label: "Social", icon: Users, count: 0 },
-  { key: "promotions", label: "Promotions", icon: Tag, count: 1 },
-  { key: "updates", label: "Updates", icon: AlertCircle, count: 2 },
-  { key: "forums", label: "Forums", icon: FileText, count: 0 },
-]
-
-const labels = [
-  { name: "Orders", color: "bg-blue-500" },
-  { name: "Suppliers", color: "bg-green-500" },
-  { name: "Alerts", color: "bg-red-500" },
-  { name: "Inventory", color: "bg-yellow-500" },
-  { name: "Pricing", color: "bg-purple-500" },
-  { name: "Catalogs", color: "bg-pink-500" },
-  { name: "Logistics", color: "bg-indigo-500" },
-  { name: "Deliveries", color: "bg-orange-500" },
-  { name: "Reports", color: "bg-teal-500" },
-  { name: "Quality", color: "bg-cyan-500" },
+  { key: "primary", label: "Primary", icon: Inbox, count: 0 },
+  { key: "updates", label: "Updates", icon: Bell, count: 0 },
 ]
 
 export default function InboxPage() {
-  const [emails, setEmails] = useState<Email[]>(mockEmails)
+  const [emails, setEmails] = useState<Email[]>([])
   const [selectedEmails, setSelectedEmails] = useState<string[]>([])
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("primary")
   const [showUnreadOnly, setShowUnreadOnly] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isLoadingGmail, setIsLoadingGmail] = useState(false)
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
 
   const filteredEmails = emails.filter((email) => {
     const matchesSearch =
@@ -215,6 +85,13 @@ export default function InboxPage() {
 
     return matchesSearch && matchesCategory && matchesReadStatus
   })
+
+  // Update category counts
+  const primaryCount = emails.filter((email) => email.category === "primary").length
+  const updatesCount = emails.filter((email) => email.category === "updates").length
+
+  categories[0].count = primaryCount
+  categories[1].count = updatesCount
 
   const unreadCount = emails.filter((email) => !email.isRead).length
 
@@ -230,43 +107,159 @@ export default function InboxPage() {
     }
   }
 
-  const handleEmailClick = (email: Email) => {
+  const handleEmailClick = async (email: Email) => {
     setSelectedEmail(email)
     if (!email.isRead) {
+      // Mark as read locally
       setEmails((prev) => prev.map((e) => (e.id === email.id ? { ...e, isRead: true } : e)))
+
+      // Mark as read on Gmail
+      try {
+        await fetch("/api/gmail", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "markRead",
+            messageId: email.id,
+          }),
+        })
+      } catch (error) {
+        console.error("Failed to mark email as read:", error)
+      }
     }
   }
 
-  const handleStarToggle = (emailId: string, event: React.MouseEvent) => {
+  const handleStarToggle = async (emailId: string, event: React.MouseEvent) => {
     event.stopPropagation()
+
+    const email = emails.find((e) => e.id === emailId)
+    if (!email) return
+
+    // Update locally
     setEmails((prev) => prev.map((email) => (email.id === emailId ? { ...email, isStarred: !email.isStarred } : email)))
+
+    // Update on Gmail
+    try {
+      await fetch("/api/gmail", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "toggleStar",
+          messageId: emailId,
+          isStarred: email.isStarred,
+        }),
+      })
+    } catch (error) {
+      console.error("Failed to toggle star:", error)
+      // Revert local change on error
+      setEmails((prev) =>
+        prev.map((email) => (email.id === emailId ? { ...email, isStarred: !email.isStarred } : email)),
+      )
+    }
   }
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    // Simulate API call
+    // Simulate refresh
     await new Promise((resolve) => setTimeout(resolve, 1000))
     setIsRefreshing(false)
+    toast.success("Inbox refreshed")
+  }
+
+  const fetchGmailEmails = async () => {
+    setIsLoadingGmail(true)
+
+    const loadingToast = toast.loading("Fetching emails from Gmail...", {
+      description: "Retrieving emails from the last 3 days",
+    })
+
+    try {
+      const response = await fetch("/api/gmail")
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.details || data.error || "Failed to fetch emails")
+      }
+
+      if (data.success) {
+        setEmails(data.emails)
+        setLastSyncTime(data.timestamp)
+
+        toast.dismiss(loadingToast)
+        toast.success(`Successfully loaded ${data.count} emails! 📧`, {
+          description: `Retrieved emails from the last 3 days via Gmail API`,
+        })
+      } else {
+        throw new Error(data.error || "Failed to fetch emails")
+      }
+    } catch (error: any) {
+      console.error("Error fetching Gmail emails:", error)
+
+      toast.dismiss(loadingToast)
+      toast.error("Failed to fetch Gmail emails", {
+        description: error.message || "Please check your Gmail API configuration",
+      })
+    } finally {
+      setIsLoadingGmail(false)
+    }
   }
 
   const handleArchive = () => {
     setEmails((prev) => prev.filter((email) => !selectedEmails.includes(email.id)))
     setSelectedEmails([])
+    toast.success(`Archived ${selectedEmails.length} email${selectedEmails.length !== 1 ? "s" : ""}`)
   }
 
   const handleDelete = () => {
     setEmails((prev) => prev.filter((email) => !selectedEmails.includes(email.id)))
     setSelectedEmails([])
+    toast.success(`Deleted ${selectedEmails.length} email${selectedEmails.length !== 1 ? "s" : ""}`)
   }
 
-  const handleMarkAsRead = () => {
+  const handleMarkAsRead = async () => {
     setEmails((prev) => prev.map((email) => (selectedEmails.includes(email.id) ? { ...email, isRead: true } : email)))
+
+    // Update on Gmail for each selected email
+    for (const emailId of selectedEmails) {
+      try {
+        await fetch("/api/gmail", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "markRead",
+            messageId: emailId,
+          }),
+        })
+      } catch (error) {
+        console.error("Failed to mark email as read:", error)
+      }
+    }
+
     setSelectedEmails([])
+    toast.success(`Marked ${selectedEmails.length} email${selectedEmails.length !== 1 ? "s" : ""} as read`)
   }
 
-  const handleMarkAsUnread = () => {
+  const handleMarkAsUnread = async () => {
     setEmails((prev) => prev.map((email) => (selectedEmails.includes(email.id) ? { ...email, isRead: false } : email)))
+
+    // Update on Gmail for each selected email
+    for (const emailId of selectedEmails) {
+      try {
+        await fetch("/api/gmail", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "markUnread",
+            messageId: emailId,
+          }),
+        })
+      } catch (error) {
+        console.error("Failed to mark email as unread:", error)
+      }
+    }
+
     setSelectedEmails([])
+    toast.success(`Marked ${selectedEmails.length} email${selectedEmails.length !== 1 ? "s" : ""} as unread`)
   }
 
   const getPriorityColor = (priority: string) => {
@@ -280,11 +273,6 @@ export default function InboxPage() {
     }
   }
 
-  const getLabelColor = (labelName: string) => {
-    const label = labels.find((l) => l.name === labelName)
-    return label?.color || "bg-gray-500"
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -293,19 +281,32 @@ export default function InboxPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Inbox</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Gmail Inbox</h1>
               <p className="text-gray-600">
                 {unreadCount} unread message{unreadCount !== 1 ? "s" : ""} • {emails.length} total
+                {lastSyncTime && (
+                  <span className="ml-2 text-sm">• Last sync: {new Date(lastSyncTime).toLocaleTimeString()}</span>
+                )}
               </p>
             </div>
             <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchGmailEmails}
+                disabled={isLoadingGmail}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                {isLoadingGmail ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CloudDownload className="h-4 w-4 mr-2" />
+                )}
+                {isLoadingGmail ? "Loading..." : "Get Gmail (3 days)"}
+              </Button>
               <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
                 <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
                 Refresh
-              </Button>
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
               </Button>
             </div>
           </div>
@@ -316,12 +317,6 @@ export default function InboxPage() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Compose Button */}
-            <Button className="w-full" size="lg">
-              <Send className="h-4 w-4 mr-2" />
-              Compose
-            </Button>
-
             {/* Categories */}
             <Card>
               <CardHeader>
@@ -355,18 +350,18 @@ export default function InboxPage() {
               </CardContent>
             </Card>
 
-            {/* Labels */}
+            {/* Gmail API Status */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Labels</CardTitle>
+                <CardTitle className="text-sm font-medium">Gmail Integration</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {labels.map((label) => (
-                  <div key={label.name} className="flex items-center space-x-2">
-                    <div className={`w-3 h-3 rounded-full ${label.color}`}></div>
-                    <span className="text-sm text-gray-700">{label.name}</span>
-                  </div>
-                ))}
+              <CardContent className="space-y-3">
+                <div className="text-sm text-gray-600">
+                  Click "Get Gmail" to fetch your latest emails from the last 3 days using Google's Gmail API.
+                </div>
+                {lastSyncTime && (
+                  <div className="text-xs text-gray-500">Last synced: {new Date(lastSyncTime).toLocaleString()}</div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -389,29 +384,6 @@ export default function InboxPage() {
                     >
                       {showUnreadOnly ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                     </Button>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <Filter className="h-4 w-4" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-48">
-                        <div className="space-y-2">
-                          <Button variant="ghost" size="sm" className="w-full justify-start">
-                            <Star className="h-4 w-4 mr-2" />
-                            Starred
-                          </Button>
-                          <Button variant="ghost" size="sm" className="w-full justify-start">
-                            <Paperclip className="h-4 w-4 mr-2" />
-                            Has attachments
-                          </Button>
-                          <Button variant="ghost" size="sm" className="w-full justify-start">
-                            <AlertCircle className="h-4 w-4 mr-2" />
-                            High priority
-                          </Button>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
                   </div>
                 </div>
                 <div className="flex items-center space-x-4">
@@ -471,8 +443,24 @@ export default function InboxPage() {
                   {filteredEmails.length === 0 ? (
                     <div className="text-center py-12">
                       <Mail className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">No emails found</h3>
-                      <p className="text-gray-500">Try adjusting your search or filter criteria</p>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">
+                        {emails.length === 0 ? "No emails loaded" : "No emails found"}
+                      </h3>
+                      <p className="text-gray-500 mb-4">
+                        {emails.length === 0
+                          ? "Click 'Get Gmail' to fetch your emails from the last 3 days"
+                          : "Try adjusting your search or filter criteria"}
+                      </p>
+                      {emails.length === 0 && (
+                        <Button onClick={fetchGmailEmails} disabled={isLoadingGmail}>
+                          {isLoadingGmail ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <CloudDownload className="h-4 w-4 mr-2" />
+                          )}
+                          Get Gmail Emails
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     filteredEmails.map((email) => (
@@ -522,13 +510,9 @@ export default function InboxPage() {
                           <div className="flex items-center justify-between">
                             <p className="text-sm text-gray-600 truncate">{email.preview}</p>
                             <div className="flex items-center space-x-1 ml-2">
-                              {email.labels.slice(0, 2).map((label) => (
-                                <div
-                                  key={label}
-                                  className={`w-2 h-2 rounded-full ${getLabelColor(label)}`}
-                                  title={label}
-                                ></div>
-                              ))}
+                              {email.labels.includes("High Priority") && (
+                                <div className="w-2 h-2 rounded-full bg-red-500" title="High Priority"></div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -601,8 +585,8 @@ export default function InboxPage() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
                             <Paperclip className="h-4 w-4 text-gray-400" />
-                            <span className="text-sm font-medium">order-confirmation.pdf</span>
-                            <span className="text-xs text-gray-500">(245 KB)</span>
+                            <span className="text-sm font-medium">attachment.pdf</span>
+                            <span className="text-xs text-gray-500">(size unknown)</span>
                           </div>
                           <Button variant="ghost" size="sm">
                             <Download className="h-4 w-4" />
