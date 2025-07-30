@@ -446,13 +446,13 @@ export default function CompanyManagementPage() {
   }
 
   const handleSuspendUser = async (userId: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'active' ? 'suspended' : 'active'
-    const action = newStatus === 'suspended' ? 'suspend' : 'reactivate'
-    
+    const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
+    const action = newStatus === 'suspended' ? 'suspend' : 'reactivate';
+
     if (!confirm(`Are you sure you want to ${action} this user account?`)) {
-      return
+      return;
     }
-    
+
     try {
       const response = await fetch('/api/users', {
         method: 'PUT',
@@ -463,19 +463,24 @@ export default function CompanyManagementPage() {
           userId: userId,
           status: newStatus
         }),
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (response.ok) {
-        alert(`User ${action}d successfully!`)
-        await loadUserAccounts() // Reload users
+        alert(`User ${action}d successfully!`);
+        // Optimistically update userAccounts state for instant UI feedback
+        setUserAccounts((prev) =>
+          prev.map((u) =>
+            u._id === userId ? { ...u, status: newStatus } : u
+          )
+        );
       } else {
-        alert(data.error || `Failed to ${action} user`)
+        alert(data.error || `Failed to ${action} user`);
       }
     } catch (error) {
-      console.error(`Error ${action}ing user:`, error)
-      alert(`Failed to ${action} user`)
+      console.error(`Error ${action}ing user:`, error);
+      alert(`Failed to ${action} user`);
     }
   }
 
@@ -1169,10 +1174,6 @@ export default function CompanyManagementPage() {
                                     Suspend
                                   </>
                                 )}
-                              </Button>
-                              <Button variant="outline" size="sm">
-                                <Settings className="mr-2 h-4 w-4" />
-                                Security
                               </Button>
                               {account.email !== "admin@palletworks.sg" && (
                                 <Button 

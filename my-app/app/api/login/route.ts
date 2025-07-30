@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     // Find user by email
     const user = await User.findOne({ email: email.toLowerCase().trim() });
-    
+
     if (!user) {
       return NextResponse.json(
         { error: "Invalid email or password" },
@@ -29,9 +29,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Prevent suspended accounts from logging in
+    if (user.status === "suspended") {
+      return NextResponse.json(
+        { error: "Your account is suspended. Please contact support." },
+        { status: 403 }
+      );
+    }
+
     // Check password using bcrypt
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    
+
     if (!isPasswordValid) {
       return NextResponse.json(
         { error: "Invalid email or password" },

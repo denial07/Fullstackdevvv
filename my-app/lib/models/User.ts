@@ -9,6 +9,7 @@ export interface IUser extends Document {
   phone?: string;
   department?: string;
   bio?: string;
+  status: string; // 'active', 'suspended', 'inactive'
   resetPasswordToken?: string;
   resetPasswordExpiry?: Date;
   twoFactorEnabled: boolean;
@@ -40,6 +41,12 @@ const UserSchema = new Schema<IUser>({
       },
       message: 'Please enter a valid email address'
     }
+  },
+  status: {
+    type: String,
+    enum: ['active', 'suspended', 'inactive'],
+    default: 'active',
+    required: true
   },
   password: {
     type: String,
