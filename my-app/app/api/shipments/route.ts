@@ -1,30 +1,38 @@
+// pages/api/shipments/add-column/route.ts
 import { connectToDatabase } from "@/lib/mongodb";
 import Shipment from "@/lib/models/Shipment";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-    await connectToDatabase();
-
-    // 1) get plain JS objects, not full Mongoose docs
-    const shipments = await Shipment.find().lean();
-
-    // 2) ensure Dates and ObjectIds become strings, drop any toJSON baggage
-    const safe = JSON.parse(JSON.stringify(shipments));
-
-    return NextResponse.json(safe);
+    try {
+        await connectToDatabase();
+        const shipments = await Shipment.find().lean();
+        return NextResponse.json(shipments);
+    } catch (error) {
+        console.error(error);
+        return NextResponse.json({ error: "Failed to fetch shipments" }, { status: 500 });
+    }
 }
 
 
 export async function POST(req: Request) {
     try {
-        const data = await req.json();
-        console.log("🚚 Received shipment data:", data); // log incoming
+        const { columnKey } = await req.json();
+        if (!columnKey) {
+            return NextResponse.json({ error: "Missing column key" }, { status: 400 });
+        }
 
         await connectToDatabase();
-        const newShipment = await Shipment.create(data);
-        return NextResponse.json(newShipment, { status: 201 });
+
+        // Set the new column to null for documents missing the field
+        await Shipment.updateMany(
+            { [columnKey]: { $exists: false } },
+            { $set: { [columnKey]: null } }
+        );
+
+        return NextResponse.json({ message: `Column '${columnKey}' added.` }, { status: 200 });
     } catch (error) {
-        console.error("❌ Error creating shipment:", error);
-        return NextResponse.json({ error: "Failed to create shipment" }, { status: 500 });
+        console.error("❌ Error updating shipments with new column:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }

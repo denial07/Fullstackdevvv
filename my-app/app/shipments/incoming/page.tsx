@@ -1,6 +1,7 @@
+// app/(your-folder)/incoming/page.tsx
+"use client";
 
-import { connectToDatabase } from "@/lib/mongodb";
-import Shipment from "@/lib/models/Shipment";
+import { useEffect, useState } from "react";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
@@ -15,72 +16,121 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { UserNav } from "@/components/user-nav";
-import { describe } from "node:test";
-import { use } from "react";
-
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case "Arrived":
-      return "default";
+    case "Arrived": return "default";
     case "In Transit":
-    case "Customs Clearance":
-      return "secondary";
-    case "Delayed":
-      return "destructive";
-    case "Processing":
-      return "outline";
-    default:
-      return "secondary";
+    case "Customs Clearance": return "secondary";
+    case "Delayed": return "destructive";
+    case "Processing": return "outline";
+    default: return "secondary";
   }
 };
 
-export default async function IncomingShipmentsPage() {
-  await connectToDatabase();
-  const rawShipments = await Shipment.find({ type: "incoming" }).lean();
+export default function IncomingShipmentsPage() {
+  const [shipments, setShipments] = useState<any[]>([]);
+  const [columns, setColumns] = useState<any[]>([]);
+  const [newColumn, setNewColumn] = useState("");
+  const [draggedColIndex, setDraggedColIndex] = useState<number | null>(null);
 
-  const incomingShipments = rawShipments.map((s: any) => {
-    const eta = s.eta ? new Date(s.eta) : null;
-    const arrival = s.arrival ? new Date(s.arrival) : null;
+  useEffect(() => {
+    fetch("/api/shipments")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.length) return;
 
-    const delay =
-      eta && arrival
-        ? Math.max(0, Math.ceil((arrival.getTime() - eta.getTime()) / (1000 * 60 * 60 * 24)))
-        : 0;
+        const allKeys = new Set<string>();
+        data.forEach((s: any) => Object.keys(s).forEach(k => allKeys.add(k)));
 
-    return {
-      id: s.id,
-      vendor: s.vendor,
-      status: s.status,
-      shippingDate: s.shippingDate?.toISOString().split("T")[0] || "-",
-      expectedArrival: eta?.toISOString().split("T")[0] || "-",
-      actualArrival: arrival?.toISOString().split("T")[0] || "-",
-      value: s.price,
-      destination: s.destination || "Warehouse A",
-      delay,
-      items: s.description,
-      trackingNumber: s.id,
-      vessel: s.vessel || "N/A",
-      port: s.port || "Port of Singapore",
-    };
-  });
+        const inferredColumns = Array.from(allKeys).map((key) => ({
+          key,
+          label: key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+          width: "w-32"
+        }));
 
-  const totalValue = incomingShipments.reduce((sum, shipment) => sum + shipment.value, 0);
-  const delayedShipments = incomingShipments.filter((s) => s.status === "Delayed").length;
-  const inTransitShipments = incomingShipments.filter((s) => s.status === "In Transit").length;
-  const arrivedShipments = incomingShipments.filter((s) => s.status === "Arrived").length;
+        setColumns(inferredColumns);
+        setShipments(data);
+      });
+  }, []);
+
+  const handleAddColumn = async () => {
+    if (!newColumn.trim()) return;
+    const newColKey = newColumn.trim().toLowerCase().replace(/\s+/g, "_");
+    const newCol = { key: newColKey, label: newColumn.trim(), width: "w-32" };
+    setColumns((prev) => [...prev, newCol]);
+    setNewColumn("");
+
+    await fetch("/api/shipments/add-column", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ columnKey: newColKey }),
+    });
+
+    setShipments((prev) => prev.map((s) => ({ ...s, [newColKey]: s[newColKey] ?? null })));
+  };
+
+  const handleEdit = async (id: string, key: string, value: any) => {
+    setShipments((prev) =>
+      prev.map((s) => (s._id === id ? { ...s, [key]: value } : s))
+    );
+
+    await fetch(`/api/shipments/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: value }),
+    });
+  };
+
+  const handleDragStart = (index: number) => setDraggedColIndex(index);
+  const handleDragOver = (e: React.DragEvent<HTMLTableCellElement>) => e.preventDefault();
+  const handleDrop = (index: number) => {
+    if (draggedColIndex === null || draggedColIndex === index) return;
+    const reordered = [...columns];
+    const [moved] = reordered.splice(draggedColIndex, 1);
+    reordered.splice(index, 0, moved);
+    setColumns(reordered);
+    setDraggedColIndex(null);
+  };
+
+  const renderCellContent = (shipment: any, key: string) => {
+    const value = shipment[key];
+
+    if (key === "value") return value?.toLocaleString() ?? "-";
+    if (key === "status") return <Badge variant={getStatusColor(value)}>{value}</Badge>;
+    if (key === "delay") return value > 0 ? (
+      <span className="text-red-600 font-medium">{value}</span>
+    ) : <span className="text-green-600">0</span>;
+
+    const editable = key !== "delay" && key !== "trackingNumber" && key !== "id";
+
+    if (editable) {
+      return (
+        <input
+          className="bg-transparent border-b border-gray-300 focus:outline-none focus:border-black w-full"
+          defaultValue={value ?? ""}
+          onBlur={(e) => handleEdit(shipment._id, key, e.target.value)}
+        />
+      );
+    }
+
+    return value ?? "-";
+  };
+
+  const totalValue = shipments.reduce((sum, s) => sum + (s.value || 0), 0);
+  const delayed = shipments.filter((s) => s.status === "Delayed").length;
+  const inTransit = shipments.filter((s) => s.status === "In Transit").length;
+  const arrived = shipments.filter((s) => s.status === "Arrived").length;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-6">
             <div className="flex items-center space-x-4">
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/shipments">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Shipments
+                  <ArrowLeft className="h-4 w-4 mr-2" /> Back to Shipments
                 </Link>
               </Button>
               <div>
@@ -90,8 +140,7 @@ export default async function IncomingShipmentsPage() {
             </div>
             <div className="flex space-x-2">
               <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export
+                <Download className="h-4 w-4 mr-2" /> Export
               </Button>
               <Button size="sm">Log Incoming</Button>
               <UserNav />
@@ -101,137 +150,62 @@ export default async function IncomingShipmentsPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Incoming</CardTitle>
-              <Ship className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{incomingShipments.length}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">In Transit</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{inTransitShipments}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Delayed</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">{delayedShipments}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Arrived</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{arrivedShipments}</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">S${totalValue.toLocaleString()}</div>
-            </CardContent>
-          </Card>
+          <Card><CardHeader><CardTitle className="text-sm">Total Incoming</CardTitle><Ship className="h-4 w-4" /></CardHeader><CardContent><div className="text-2xl font-bold">{shipments.length}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-sm">In Transit</CardTitle><Clock className="h-4 w-4" /></CardHeader><CardContent><div className="text-2xl font-bold">{inTransit}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-sm">Delayed</CardTitle><AlertTriangle className="h-4 w-4" /></CardHeader><CardContent><div className="text-2xl font-bold text-red-600">{delayed}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-sm">Arrived</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{arrived}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-sm">Total Value</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">S${totalValue.toLocaleString()}</div></CardContent></Card>
         </div>
 
-        {/* Search and Filter */}
         <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Search & Filter</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>Search & Filter</CardTitle></CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search by shipment ID, vendor, or tracking number..." className="pl-10" />
-                </div>
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search by shipment ID, vendor, or tracking number..." className="pl-10" />
               </div>
-              <Button variant="outline">
-                <Filter className="h-4 w-4 mr-2" />
-                Filter
-              </Button>
+              <Button variant="outline"><Filter className="h-4 w-4 mr-2" /> Filter</Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Incoming Shipments Table */}
+        <div className="flex space-x-2 mb-4">
+          <Input placeholder="New column name (e.g. 'Insurance')" value={newColumn} onChange={(e) => setNewColumn(e.target.value)} />
+          <Button onClick={handleAddColumn}>Add Column</Button>
+        </div>
+
         <Card>
-          <CardHeader>
-            <CardTitle>All Incoming Shipments</CardTitle>
-            <CardDescription>Raw material shipments from overseas vendors</CardDescription>
-          </CardHeader>
+          <CardHeader><CardTitle>All Incoming Shipments</CardTitle><CardDescription>Raw material shipments from overseas vendors</CardDescription></CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Shipment ID</TableHead>
-                    <TableHead>Vendor</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Items</TableHead>
-                    <TableHead>Destination</TableHead>
-                    <TableHead>Vessel</TableHead>
-                    <TableHead>Shipping Date</TableHead>
-                    <TableHead>Expected Arrival</TableHead>
-                    <TableHead>Actual Arrival</TableHead>
-                    <TableHead>Value (S$)</TableHead>
-                    <TableHead>Delay (Days)</TableHead>
-                    <TableHead>Tracking</TableHead>
+                    {columns.map((col, index) => (
+                      <TableHead
+                        key={col.key}
+                        className={`${col.width} cursor-move`}
+                        draggable
+                        onDragStart={() => handleDragStart(index)}
+                        onDragOver={handleDragOver}
+                        onDrop={() => handleDrop(index)}
+                      >
+                        {col.label}
+                      </TableHead>
+                    ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {incomingShipments.map((shipment) => (
-                    <TableRow className="hover:bg-gray-100 transition-colors cursor-pointer">
-                      <TableCell colSpan={12} className="p-0">
-                        <Link
-                          href={`/shipments/${shipment.id}`}
-                          className="block w-full h-full p-4"
-                        >
-                          <div className="grid grid-cols-12 gap-2">
-                            <div className="col-span-1 font-medium">{shipment.id}</div>
-                            <div className="col-span-1">{shipment.vendor}</div>
-                            <div className="col-span-1">
-                              <Badge variant={getStatusColor(shipment.status)}>{shipment.status}</Badge>
-                            </div>
-                            <div className="col-span-2 truncate">{shipment.items}</div>
-                            <div className="col-span-1">{shipment.destination}</div>
-                            <div className="col-span-1">{shipment.vessel}</div>
-                            <div className="col-span-1">{shipment.shippingDate}</div>
-                            <div className="col-span-1">{shipment.expectedArrival}</div>
-                            <div className="col-span-1">{shipment.actualArrival || "-"}</div>
-                            <div className="col-span-1">{shipment.value.toLocaleString()}</div>
-                            <div className="col-span-1">
-                              {shipment.delay > 0 ? (
-                                <span className="text-red-600 font-medium">{shipment.delay}</span>
-                              ) : (
-                                <span className="text-green-600">0</span>
-                              )}
-                            </div>
-                            <div className="col-span-1 font-mono text-xs">{shipment.trackingNumber}</div>
-                          </div>
-                        </Link>
-                      </TableCell>
+                  {shipments.map((shipment) => (
+                    <TableRow key={shipment._id} className="hover:bg-gray-100 cursor-pointer">
+                      {columns.map((col) => (
+                        <TableCell key={`${shipment._id}-${col.key}`} className={col.width}>
+                          {renderCellContent(shipment, col.key)}
+                        </TableCell>
+                      ))}
                     </TableRow>
-
                   ))}
                 </TableBody>
               </Table>
