@@ -55,9 +55,17 @@ export default function IncomingShipmentsPage() {
   }, []);
 
   const handleAddColumn = async () => {
+      console.log("🔔 Add column triggered"); // Confirm it's called
+
     if (!newColumn.trim()) return;
     const newColKey = newColumn.trim().toLowerCase().replace(/\s+/g, "_");
-    const newCol = { key: newColKey, label: newColumn.trim(), width: "w-32" };
+
+    const newCol = {
+      key: newColKey,
+      label: newColumn.trim(),
+      width: "w-32"
+    };
+
     setColumns((prev) => [...prev, newCol]);
     setNewColumn("");
 
@@ -69,6 +77,9 @@ export default function IncomingShipmentsPage() {
 
     setShipments((prev) => prev.map((s) => ({ ...s, [newColKey]: s[newColKey] ?? null })));
   };
+
+
+
 
   const handleEdit = async (id: string, key: string, value: any) => {
     setShipments((prev) =>
@@ -122,6 +133,7 @@ export default function IncomingShipmentsPage() {
   const inTransit = shipments.filter((s) => s.status === "In Transit").length;
   const arrived = shipments.filter((s) => s.status === "Arrived").length;
 
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b">
@@ -171,10 +183,19 @@ export default function IncomingShipmentsPage() {
           </CardContent>
         </Card>
 
-        <div className="flex space-x-2 mb-4">
-          <Input placeholder="New column name (e.g. 'Insurance')" value={newColumn} onChange={(e) => setNewColumn(e.target.value)} />
-          <Button onClick={handleAddColumn}>Add Column</Button>
+        <div className="flex items-center gap-2 mb-4">
+          <Input
+            type="text"
+            placeholder="New column name"
+            value={newColumn}
+            onChange={(e) => setNewColumn(e.target.value)}
+            className="w-64"
+          />
+          <Button onClick={handleAddColumn}>
+            Add Column
+          </Button>
         </div>
+
 
         <Card>
           <CardHeader><CardTitle>All Incoming Shipments</CardTitle><CardDescription>Raw material shipments from overseas vendors</CardDescription></CardHeader>

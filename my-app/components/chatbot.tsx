@@ -141,24 +141,22 @@ export function ChatBot({ isOpen, onClose }: ChatBotProps) {
     if (!isOpen) return null
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end justify-end p-6">
-            <Card className="w-96 h-[600px] flex flex-col">
-                <CardHeader className="p-0">
-                    <div className="flex items-center justify-between px-4 py-3 bg-blue-800 rounded-t-md">
-                        <CardTitle className="flex items-center space-x-2 text-white text-base font-semibold">
-                            <Bot className="h-5 w-5" />
-                            <span>AI Assistant</span>
-                        </CardTitle>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={onClose}
-                            className="text-white hover:bg-blue-700"
-                        >
-                            <X className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </CardHeader>
+        <div className="fixed inset-0 z-50 flex items-end justify-end p-6 pt-0">
+            <Card className="w-96 h-[600px] flex flex-col gap-0 py-0">
+                <div className="flex items-center justify-between px-4 py-3 bg-blue-800 rounded-t-md">
+                    <CardTitle className="flex items-center space-x-2 text-white text-base font-semibold">
+                        <Bot className="h-5 w-5" />
+                        <span>AI Assistant</span>
+                    </CardTitle>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={onClose}
+                        className="text-white hover:bg-blue-700"
+                    >
+                        <X className="h-4 w-4" />
+                    </Button>
+                </div>
 
 
                 <CardContent className="flex flex-col flex-1 min-h-0 p-0">
