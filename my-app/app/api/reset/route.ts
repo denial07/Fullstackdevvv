@@ -42,9 +42,37 @@ export async function POST(req: NextRequest) {
     // Find user by email
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     
-    // Always return success for security (don't reveal if email exists)
+    // If user does not exist, send notification to admin Gmail
     if (!user) {
       console.log("🔍 Password reset requested for non-existent email:", email);
+      try {
+        // Setup email transporter
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASSWORD
+          }
+        });
+        const adminEmail = process.env.EMAIL_USER || 'yeexian2007@gmail.com';
+        const mailOptions = {
+          from: `"Singapore Pallet Works Security" <${process.env.EMAIL_USER}>`,
+          to: adminEmail,
+          subject: '⚠️ Password Reset Attempt for Non-Existent Account',
+          html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #dc2626;">Password Reset Attempt (Non-Existent Account)</h2>
+            <p>A password reset was requested for the following email address, but no account exists:</p>
+            <p style="font-weight: bold; color: #2563eb;">${email}</p>
+            <p>This is for your information. No reset link was sent to the user.</p>
+            <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+            <p style="font-size: 12px; color: #6b7280;">This is an automated message. Please do not reply to this email.</p>
+          </div>`
+        };
+        await transporter.sendMail(mailOptions);
+        console.log("� Admin notified of password reset attempt for non-existent account:", email);
+      } catch (adminEmailError) {
+        console.error("❌ Failed to notify admin of password reset attempt:", adminEmailError);
+      }
       return NextResponse.json({
         message: "If an account with that email exists, a reset link has been sent."
       });
