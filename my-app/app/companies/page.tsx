@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -594,11 +595,23 @@ export default function CompanyManagementPage() {
         </div>
         <div>
           <Label htmlFor="userDepartment">Department</Label>
-          <Input
-            id="userDepartment"
+          <Select
             value={userFormData.department}
-            onChange={(e) => setUserFormData({ ...userFormData, department: e.target.value })}
-          />
+            onValueChange={(value) => setUserFormData({ ...userFormData, department: value })}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select department" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Operations">Operations</SelectItem>
+              <SelectItem value="Sales">Sales</SelectItem>
+              <SelectItem value="Logistics">Logistics</SelectItem>
+              <SelectItem value="Finance">Finance</SelectItem>
+              <SelectItem value="HR">HR</SelectItem>
+              <SelectItem value="IT">IT</SelectItem>
+              <SelectItem value="Other">Other</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="md:col-span-2">
           <Label htmlFor="userBio">Bio</Label>
