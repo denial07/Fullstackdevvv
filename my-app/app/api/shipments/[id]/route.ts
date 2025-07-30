@@ -1,5 +1,7 @@
 import { connectToDatabase } from "@/lib/mongodb"
 import Shipment from "@/lib/models/Shipment"
+import { NextResponse } from "next/server";
+
 
 export async function GET(
     req: Request,
@@ -31,28 +33,25 @@ export async function GET(
 
 export async function PATCH(
     req: Request,
-    context: { params: { id: string } }
+    { params }: { params: { id: string } }
 ) {
     try {
-        await connectToDatabase()
-        const data = await req.json()
+        await connectToDatabase();
+        const data = await req.json();
 
-        const updated = await Shipment.findByIdAndUpdate(context.params.id, data, {
+        const updated = await Shipment.findByIdAndUpdate(params.id, data, {
             new: true,
             runValidators: true,
-        })
+        });
 
         if (!updated) {
-            return new Response("Shipment not found", { status: 404 })
+            return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
         }
 
-        return new Response(JSON.stringify(updated), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-        })
+        return NextResponse.json(updated, { status: 200 });
     } catch (error) {
-        console.error("Error in PATCH handler:", error)
-        return new Response("Internal Server Error", { status: 500 })
+        console.error("Error in PATCH handler:", error);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
 export async function DELETE(

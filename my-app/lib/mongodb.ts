@@ -13,6 +13,8 @@ if (!MONGODB_URI) {
  */
 // @ts-ignore
 let cached = global.mongoose
+const shipmentSchema = new mongoose.Schema({}, { strict: false })
+const Shipment = mongoose.models.Shipment || mongoose.model("Shipment", shipmentSchema)
 
 if (!cached) {
   // @ts-ignore
