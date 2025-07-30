@@ -34,6 +34,10 @@ import {
   Bell,
   Loader2,
   CloudDownload,
+  Brain,
+  Save,
+  CheckCircle,
+  AlertTriangle,
 } from "lucide-react"
 import { Navbar } from "@/components/navbar"
 import { toast } from "sonner"
@@ -58,6 +62,26 @@ interface Email {
   threadId?: string
 }
 
+interface EmailAnalysis {
+  isShipmentRelated: boolean
+  type?: string
+  extractedData?: {
+    trackingNumber?: string
+    shipmentId?: string
+    status?: string
+    origin?: string
+    destination?: string
+    estimatedDelivery?: string
+    carrier?: string
+    items?: Array<{ name: string; quantity?: number; description?: string }>
+    urgency?: string
+    actionRequired?: boolean
+    notes?: string
+  }
+  summary: string
+  suggestedAction?: string
+}
+
 const categories = [
   { key: "primary", label: "Primary", icon: Inbox, count: 0 },
   { key: "updates", label: "Updates", icon: Bell, count: 0 },
@@ -74,6 +98,9 @@ export default function InboxPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isLoadingGmail, setIsLoadingGmail] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
+  const [emailAnalysis, setEmailAnalysis] = useState<EmailAnalysis | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isSavingShipment, setIsSavingShipment] = useState(false)
 
   const filteredEmails = emails.filter((email) => {
     const matchesSearch =
@@ -112,6 +139,7 @@ export default function InboxPage() {
   const handleEmailClick = async (email: Email) => {
     setSelectedEmail(email)
     setIsEmailDialogOpen(true)
+    setEmailAnalysis(null) // Reset analysis when opening new email
     if (!email.isRead) {
       // Mark as read locally
       setEmails((prev) => prev.map((e) => (e.id === email.id ? { ...e, isRead: true } : e)))
@@ -129,6 +157,114 @@ export default function InboxPage() {
       } catch (error) {
         console.error("Failed to mark email as read:", error)
       }
+    }
+  }
+
+  const analyzeEmailWithAI = async () => {
+    if (!selectedEmail) return
+
+    setIsAnalyzing(true)
+    
+    const loadingToast = toast.loading("Analyzing email with AI...", {
+      description: "Extracting shipment information from email content",
+    })
+
+    try {
+      const response = await fetch("/api/analyze-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: selectedEmail }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to analyze email")
+      }
+
+      if (data.success) {
+        setEmailAnalysis(data.analysis)
+        
+        toast.dismiss(loadingToast)
+        if (data.analysis.isShipmentRelated) {
+          toast.success("Shipment information extracted! 🚚", {
+            description: `Detected: ${data.analysis.type?.replace('_', ' ') || 'shipment update'}`,
+          })
+        } else {
+          toast.info("No shipment information found", {
+            description: "This email doesn't appear to be shipment-related",
+          })
+        }
+      } else {
+        throw new Error(data.error || "Analysis failed")
+      }
+    } catch (error: any) {
+      console.error("Error analyzing email:", error)
+      toast.dismiss(loadingToast)
+      toast.error("Failed to analyze email", {
+        description: error.message || "Please try again",
+      })
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  const saveShipmentData = async () => {
+    if (!selectedEmail || !emailAnalysis || !emailAnalysis.isShipmentRelated) return
+
+    console.log("Starting shipment save process...")
+    console.log("Selected email:", selectedEmail)
+    console.log("Email analysis:", emailAnalysis)
+
+    setIsSavingShipment(true)
+    
+    const loadingToast = toast.loading("Saving shipment data...", {
+      description: "Committing changes to database",
+    })
+
+    try {
+      const requestData = {
+        emailData: selectedEmail,
+        analysisResult: emailAnalysis,
+      }
+      
+      console.log("Sending request to save-shipment API:", requestData)
+
+      const response = await fetch("/api/save-shipment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestData),
+      })
+
+      console.log("Response status:", response.status)
+      console.log("Response OK:", response.ok)
+
+      const data = await response.json()
+      console.log("Response data:", data)
+
+      if (!response.ok) {
+        console.error("Response not OK:", data)
+        throw new Error(data.error || "Failed to save shipment")
+      }
+
+      if (data.success) {
+        console.log("Shipment saved successfully!")
+        toast.dismiss(loadingToast)
+        toast.success("Shipment data saved successfully! ✅", {
+          description: `${data.message} - Tracking: ${data.shipment.trackingNumber || 'N/A'}`,
+        })
+      } else {
+        console.error("Save failed:", data)
+        throw new Error(data.error || "Save failed")
+      }
+    } catch (error: any) {
+      console.error("Error saving shipment:", error)
+      toast.dismiss(loadingToast)
+      toast.error("Failed to save shipment data", {
+        description: error.message || "Please try again",
+      })
+    } finally {
+      setIsSavingShipment(false)
     }
   }
 
@@ -367,6 +503,36 @@ export default function InboxPage() {
                 )}
               </CardContent>
             </Card>
+
+
+            {/* AI Analysis Info */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium flex items-center">
+                  <Brain className="h-4 w-4 mr-2 text-purple-600" />
+                  AI Email Analysis
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="text-sm text-gray-600">
+                  Use AI to automatically extract shipment information from emails and save to your database.
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center text-xs text-gray-500">
+                    <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
+                    Detects shipment updates
+                  </div>
+                  <div className="flex items-center text-xs text-gray-500">
+                    <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
+                    Extracts tracking info
+                  </div>
+                  <div className="flex items-center text-xs text-gray-500">
+                    <CheckCircle className="h-3 w-3 mr-1 text-green-500" />
+                    Auto-formats data
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Email List */}
@@ -563,6 +729,169 @@ export default function InboxPage() {
                 <Separator className="my-4" />
                 
                 <div className="space-y-6">
+                  {/* AI Analysis Section */}
+                  <div className="border rounded-lg p-4 bg-gradient-to-r from-purple-50 to-blue-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium flex items-center">
+                        <Brain className="h-4 w-4 mr-2 text-purple-600" />
+                        AI Shipment Analysis
+                      </h4>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={analyzeEmailWithAI}
+                        disabled={isAnalyzing}
+                      >
+                        {isAnalyzing ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Brain className="h-4 w-4 mr-2" />
+                        )}
+                        {isAnalyzing ? "Analyzing..." : "Analyze Email"}
+                      </Button>
+                    </div>
+                    
+                    {emailAnalysis && (
+                      <div className="space-y-4">
+                        {emailAnalysis.isShipmentRelated ? (
+                          <div className="bg-white rounded-lg p-4 border">
+                            <div className="flex items-center mb-3">
+                              <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
+                              <span className="font-medium text-green-700">Shipment Information Detected</span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                              {emailAnalysis.type && (
+                                <div>
+                                  <label className="text-xs font-medium text-gray-500 uppercase">Type</label>
+                                  <div className="text-sm font-medium capitalize">
+                                    {emailAnalysis.type.replace('_', ' ')}
+                                  </div>
+                                </div>
+                              )}
+                              {emailAnalysis.extractedData?.status && (
+                                <div>
+                                  <label className="text-xs font-medium text-gray-500 uppercase">Status</label>
+                                  <div className="text-sm font-medium">{emailAnalysis.extractedData.status}</div>
+                                </div>
+                              )}
+                              {emailAnalysis.extractedData?.trackingNumber && (
+                                <div>
+                                  <label className="text-xs font-medium text-gray-500 uppercase">Tracking Number</label>
+                                  <div className="text-sm font-medium font-mono">{emailAnalysis.extractedData.trackingNumber}</div>
+                                </div>
+                              )}
+                              {emailAnalysis.extractedData?.carrier && (
+                                <div>
+                                  <label className="text-xs font-medium text-gray-500 uppercase">Carrier</label>
+                                  <div className="text-sm font-medium">{emailAnalysis.extractedData.carrier}</div>
+                                </div>
+                              )}
+                              {emailAnalysis.extractedData?.origin && (
+                                <div>
+                                  <label className="text-xs font-medium text-gray-500 uppercase">Origin</label>
+                                  <div className="text-sm">{emailAnalysis.extractedData.origin}</div>
+                                </div>
+                              )}
+                              {emailAnalysis.extractedData?.destination && (
+                                <div>
+                                  <label className="text-xs font-medium text-gray-500 uppercase">Destination</label>
+                                  <div className="text-sm">{emailAnalysis.extractedData.destination}</div>
+                                </div>
+                              )}
+                              {emailAnalysis.extractedData?.estimatedDelivery && (
+                                <div>
+                                  <label className="text-xs font-medium text-gray-500 uppercase">Estimated Delivery</label>
+                                  <div className="text-sm">{emailAnalysis.extractedData.estimatedDelivery}</div>
+                                </div>
+                              )}
+                              {emailAnalysis.extractedData?.urgency && (
+                                <div>
+                                  <label className="text-xs font-medium text-gray-500 uppercase">Urgency</label>
+                                  <Badge 
+                                    variant={emailAnalysis.extractedData.urgency === 'high' ? 'destructive' : 
+                                            emailAnalysis.extractedData.urgency === 'medium' ? 'default' : 'secondary'}
+                                    className="text-xs"
+                                  >
+                                    {emailAnalysis.extractedData.urgency}
+                                  </Badge>
+                                </div>
+                              )}
+                            </div>
+
+                            {emailAnalysis.extractedData?.items && emailAnalysis.extractedData.items.length > 0 && (
+                              <div className="mb-4">
+                                <label className="text-xs font-medium text-gray-500 uppercase mb-2 block">Items</label>
+                                <div className="space-y-1">
+                                  {emailAnalysis.extractedData.items.map((item, index) => (
+                                    <div key={index} className="text-sm bg-gray-50 rounded p-2">
+                                      <span className="font-medium">{item.name}</span>
+                                      {item.quantity && <span className="text-gray-600"> (Qty: {item.quantity})</span>}
+                                      {item.description && <div className="text-xs text-gray-500">{item.description}</div>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="mb-4">
+                              <label className="text-xs font-medium text-gray-500 uppercase mb-2 block">Summary</label>
+                              <div className="text-sm bg-gray-50 rounded p-3">{emailAnalysis.summary}</div>
+                            </div>
+
+                            {emailAnalysis.suggestedAction && (
+                              <div className="mb-4">
+                                <label className="text-xs font-medium text-gray-500 uppercase mb-2 block">Suggested Action</label>
+                                <div className="text-sm bg-blue-50 rounded p-3 border-l-4 border-blue-400">
+                                  {emailAnalysis.suggestedAction}
+                                </div>
+                              </div>
+                            )}
+
+                            {emailAnalysis.extractedData?.actionRequired && (
+                              <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded p-3">
+                                <div className="flex items-center">
+                                  <AlertTriangle className="h-4 w-4 text-yellow-600 mr-2" />
+                                  <span className="text-sm font-medium text-yellow-800">Action Required</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {emailAnalysis.extractedData?.notes && (
+                              <div className="mb-4">
+                                <label className="text-xs font-medium text-gray-500 uppercase mb-2 block">Notes</label>
+                                <div className="text-sm bg-gray-50 rounded p-3">{emailAnalysis.extractedData.notes}</div>
+                              </div>
+                            )}
+
+                            <Button 
+                              onClick={saveShipmentData}
+                              disabled={isSavingShipment}
+                              className="w-full"
+                            >
+                              {isSavingShipment ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <Save className="h-4 w-4 mr-2" />
+                              )}
+                              {isSavingShipment ? "Saving..." : "Commit Changes to Database"}
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="bg-white rounded-lg p-4 border">
+                            <div className="flex items-center mb-2">
+                              <AlertTriangle className="h-5 w-5 text-orange-500 mr-2" />
+                              <span className="font-medium text-orange-700">No Shipment Information Found</span>
+                            </div>
+                            <div className="text-sm text-gray-600 mb-3">{emailAnalysis.summary}</div>
+                            <div className="text-xs text-gray-500">
+                              This email doesn't appear to contain shipment or logistics information.
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {/* Labels */}
                   {selectedEmail.labels.length > 0 && (
                     <div className="flex flex-wrap gap-2">
