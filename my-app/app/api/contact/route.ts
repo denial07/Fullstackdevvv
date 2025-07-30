@@ -168,3 +168,61 @@ export async function GET() {
     );
   }
 }
+
+// PUT /api/contact - Update contact request status
+export async function PUT(req: NextRequest) {
+  try {
+    const { id, status } = await req.json();
+
+    // Validate input
+    if (!id || !status) {
+      return NextResponse.json(
+        { error: "ID and status are required" },
+        { status: 400 }
+      );
+    }
+
+    // Validate status value
+    const validStatuses = ['pending', 'reviewed', 'responded'];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json(
+        { error: "Invalid status. Must be: pending, reviewed, or responded" },
+        { status: 400 }
+      );
+    }
+
+    // Connect to database
+    await connectToDatabase();
+
+    // Update the contact request
+    const updatedRequest = await ContactRequest.findByIdAndUpdate(
+      id,
+      { 
+        status: status,
+        updatedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!updatedRequest) {
+      return NextResponse.json(
+        { error: "Contact request not found" },
+        { status: 404 }
+      );
+    }
+
+    console.log(`✅ Contact request ${id} status updated to: ${status}`);
+
+    return NextResponse.json({
+      message: `Contact request marked as ${status}`,
+      request: updatedRequest
+    });
+
+  } catch (error) {
+    console.error("❌ Error updating contact request:", error);
+    return NextResponse.json(
+      { error: "Failed to update contact request" },
+      { status: 500 }
+    );
+  }
+}
