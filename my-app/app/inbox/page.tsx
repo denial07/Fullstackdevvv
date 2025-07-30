@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   Search,
   RefreshCw,
@@ -66,6 +67,7 @@ export default function InboxPage() {
   const [emails, setEmails] = useState<Email[]>([])
   const [selectedEmails, setSelectedEmails] = useState<string[]>([])
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
+  const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("primary")
   const [showUnreadOnly, setShowUnreadOnly] = useState(false)
@@ -109,6 +111,7 @@ export default function InboxPage() {
 
   const handleEmailClick = async (email: Email) => {
     setSelectedEmail(email)
+    setIsEmailDialogOpen(true)
     if (!email.isRead) {
       // Mark as read locally
       setEmails((prev) => prev.map((e) => (e.id === email.id ? { ...e, isRead: true } : e)))
@@ -314,7 +317,7 @@ export default function InboxPage() {
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Sidebar */}
           <div className="lg:col-span-1 space-y-6">
             {/* Categories */}
@@ -524,18 +527,16 @@ export default function InboxPage() {
             </Card>
           </div>
 
-          {/* Email Detail */}
-          <div className="lg:col-span-1">
-            {selectedEmail ? (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">{selectedEmail.subject}</CardTitle>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedEmail(null)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex items-center space-x-3">
+        </div>
+
+        {/* Email Detail Dialog */}
+        <Dialog open={isEmailDialogOpen} onOpenChange={setIsEmailDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            {selectedEmail && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-semibold pr-8">{selectedEmail.subject}</DialogTitle>
+                  <div className="flex items-center space-x-3 mt-4">
                     <Avatar className="size-10">
                       <AvatarImage src={selectedEmail.from.avatar || "/placeholder.svg"} />
                       <AvatarFallback>{selectedEmail.from.name.charAt(0)}</AvatarFallback>
@@ -544,10 +545,8 @@ export default function InboxPage() {
                       <div className="font-medium">{selectedEmail.from.name}</div>
                       <div className="text-sm text-gray-500">{selectedEmail.from.email}</div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between text-sm text-gray-500">
-                    <span>{selectedEmail.timestamp}</span>
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 text-sm text-gray-500">
+                      <span>{selectedEmail.timestamp}</span>
                       {selectedEmail.priority === "high" && <AlertCircle className="h-4 w-4 text-red-500" />}
                       {selectedEmail.hasAttachments && <Paperclip className="h-4 w-4" />}
                       <button onClick={(e) => handleStarToggle(selectedEmail.id, e)}>
@@ -559,74 +558,82 @@ export default function InboxPage() {
                       </button>
                     </div>
                   </div>
-                </CardHeader>
-                <Separator />
-                <CardContent className="pt-6">
-                  <div className="space-y-4">
-                    {/* Labels */}
-                    {selectedEmail.labels.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {selectedEmail.labels.map((label) => (
-                          <Badge key={label} variant="secondary" className="text-xs">
-                            {label}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Email Body */}
-                    <div className="prose prose-sm max-w-none">
-                      <div className="whitespace-pre-wrap text-sm text-gray-700">{selectedEmail.body}</div>
+                </DialogHeader>
+                
+                <Separator className="my-4" />
+                
+                <div className="space-y-6">
+                  {/* Labels */}
+                  {selectedEmail.labels.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedEmail.labels.map((label) => (
+                        <Badge key={label} variant="secondary" className="text-xs">
+                          {label}
+                        </Badge>
+                      ))}
                     </div>
+                  )}
 
-                    {/* Attachments */}
-                    {selectedEmail.hasAttachments && (
-                      <div className="border rounded-lg p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Paperclip className="h-4 w-4 text-gray-400" />
-                            <span className="text-sm font-medium">attachment.pdf</span>
-                            <span className="text-xs text-gray-500">(size unknown)</span>
+                  {/* Email Body */}
+                  <div className="prose prose-sm max-w-none">
+                    <div className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
+                      {selectedEmail.body}
+                    </div>
+                  </div>
+
+                  {/* Attachments */}
+                  {selectedEmail.hasAttachments && (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <h4 className="text-sm font-medium mb-3 flex items-center">
+                        <Paperclip className="h-4 w-4 mr-2" />
+                        Attachments
+                      </h4>
+                      <div className="flex items-center justify-between p-3 bg-white rounded border">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-red-100 rounded flex items-center justify-center">
+                            <span className="text-xs font-medium text-red-700">PDF</span>
                           </div>
-                          <Button variant="ghost" size="sm">
-                            <Download className="h-4 w-4" />
-                          </Button>
+                          <div>
+                            <div className="text-sm font-medium">attachment.pdf</div>
+                            <div className="text-xs text-gray-500">Size unknown</div>
+                          </div>
                         </div>
+                        <Button variant="outline" size="sm">
+                          <Download className="h-4 w-4 mr-2" />
+                          Download
+                        </Button>
                       </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex space-x-2 pt-4">
-                      <Button size="sm" className="flex-1">
-                        <Reply className="h-4 w-4 mr-1" />
-                        Reply
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <ReplyAll className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Forward className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
                     </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex space-x-2 pt-4 border-t">
+                    <Button size="sm" className="flex-1">
+                      <Reply className="h-4 w-4 mr-2" />
+                      Reply
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      <ReplyAll className="h-4 w-4 mr-2" />
+                      Reply All
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      <Forward className="h-4 w-4 mr-2" />
+                      Forward
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      <Archive className="h-4 w-4 mr-2" />
+                      Archive
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center h-96">
-                  <div className="text-center">
-                    <Mail className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Select an email</h3>
-                    <p className="text-gray-500">Choose an email from the list to view its contents</p>
-                  </div>
-                </CardContent>
-              </Card>
+                </div>
+              </>
             )}
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   )
