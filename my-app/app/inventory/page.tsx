@@ -27,9 +27,13 @@ import {
   Check,
   XCircle,
   Trash2,
+  FileSpreadsheet,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+// Import the new components at the top of the file
+import { ExcelImportModal } from "@/components/excel-import-modal"
+import { ExcelTemplateGenerator } from "@/components/excel-template-generator"
 
 interface InventoryItem {
   _id: string
@@ -120,6 +124,8 @@ export default function InventoryPage() {
   })
   const [deletingItem, setDeletingItem] = useState<string | null>(null)
   const router = useRouter()
+  // Add state for the import modal inside the InventoryPage component
+  const [showImportModal, setShowImportModal] = useState(false)
 
   // Add column configuration and drag-and-drop state
   const defaultColumns = [
@@ -533,6 +539,11 @@ export default function InventoryPage() {
     }
   }
 
+  // Add this function inside the InventoryPage component
+  const handleImportSuccess = () => {
+    fetchInventory()
+  }
+
   // Get unique values for filter dropdowns
   const uniqueCategories = [...new Set(inventory.map((item) => item.category))].sort()
   const uniqueStatuses = [...new Set(inventory.map((item) => item.status))].sort()
@@ -661,7 +672,16 @@ export default function InventoryPage() {
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
-              <Button size="sm">Add Item</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowImportModal(true)}
+                className="bg-green-600 text-white hover:bg-green-700"
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Import Excel
+              </Button>
+              <ExcelTemplateGenerator />
             </div>
           </div>
         </div>
@@ -1185,6 +1205,12 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+      {/* Excel Import Modal */}
+      <ExcelImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={handleImportSuccess}
+      />
     </div>
   )
 }
