@@ -2,6 +2,7 @@ import { connectToDatabase } from "@/lib/mongodb";
 import Shipment from "@/lib/models/Shipment";
 import { NextResponse } from "next/server";
 
+// GET existing shipments
 export async function GET() {
     try {
         await connectToDatabase();
@@ -13,6 +14,7 @@ export async function GET() {
     }
 }
 
+// POST: Add a new column to all shipments
 export async function POST(req: Request) {
     try {
         const { columnKey } = await req.json();
@@ -23,7 +25,6 @@ export async function POST(req: Request) {
 
         await connectToDatabase();
 
-        // ✅ Apply to ALL documents, not just those missing the key
         await Shipment.updateMany({}, {
             $set: { [columnKey]: null }
         });
@@ -35,3 +36,24 @@ export async function POST(req: Request) {
     }
 }
 
+// DELETE: Remove a column from all shipments
+export async function DELETE(req: Request) {
+    try {
+        const { columnKey } = await req.json();
+
+        if (!columnKey || typeof columnKey !== "string") {
+            return NextResponse.json({ error: "Missing or invalid column key" }, { status: 400 });
+        }
+
+        await connectToDatabase();
+
+        await Shipment.updateMany({}, {
+            $unset: { [columnKey]: "" }
+        });
+
+        return NextResponse.json({ message: `Column '${columnKey}' removed from all documents.` }, { status: 200 });
+    } catch (error) {
+        console.error("❌ Error removing column from shipments:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}

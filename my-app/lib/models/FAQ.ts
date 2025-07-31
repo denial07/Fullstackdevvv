@@ -1,22 +1,28 @@
-import mongoose, { Document, Schema } from 'mongoose';
+// models/faq.ts
+import mongoose, { Schema, Document } from "mongoose"
 
-export interface IFaq extends Document {
-  question: string;
-  answer: string;
-  category?: string;
-  createdAt: Date;
-  updatedAt: Date;
+export interface FAQ extends Document {
+  categoryId: string
+  categoryTitle: string
+  icon: string // Store as string, e.g., "HelpCircle"
+  color: string
+  questions: {
+    question: string
+    answer: string
+  }[]
 }
 
-const FaqSchema: Schema<IFaq> = new Schema(
-  {
-    question: { type: String, required: true },
-    answer: { type: String, required: true },
-    category: { type: String },
-  },
-  {
-    timestamps: true,
-  }
-);
+const FAQSchema = new Schema<FAQ>({
+  categoryId: { type: String, required: true },
+  categoryTitle: { type: String, required: true },
+  icon: { type: String, required: true },
+  color: { type: String, required: true },
+  questions: [
+    {
+      question: { type: String, required: true },
+      answer: { type: String, required: true },
+    },
+  ],
+})
 
-export const FaqModel = mongoose.model<IFaq>('Faq', FaqSchema);
+export default mongoose.models.FAQ || mongoose.model<FAQ>("FAQ", FAQSchema)

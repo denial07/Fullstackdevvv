@@ -35,6 +35,8 @@ export default function IncomingShipmentsPage() {
   const [draggedColIndex, setDraggedColIndex] = useState<number | null>(null);
   const [editingCell, setEditingCell] = useState<{ id: string, key: string } | null>(null);
   const [tempValue, setTempValue] = useState<string>("");
+  const [editingColumn, setEditingColumn] = useState<string | null>(null);
+  const [editingColumnLabel, setEditingColumnLabel] = useState("");
 
 
 
@@ -88,6 +90,39 @@ export default function IncomingShipmentsPage() {
 
     loadShipments();
   }, []);
+
+  const handleEditColumn = (col: { key: string; label: string }) => {
+    setEditingColumn(col.key);
+    setEditingColumnLabel(col.label);
+  };
+
+  const handleSaveColumnLabel = (key: string) => {
+    setColumns(prev =>
+      prev.map(col => col.key === key ? { ...col, label: editingColumnLabel } : col)
+    );
+    setEditingColumn(null);
+  };
+
+  const handleDeleteColumn = async (key: string) => {
+    const confirmDelete = window.confirm(`Are you sure you want to delete column "${key}" from all shipments?`);
+    if (!confirmDelete) return;
+
+    try {
+      const res = await fetch("/api/shipments", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columnKey: key }),
+      });
+
+      if (!res.ok) throw new Error("Failed to delete column");
+
+      // Remove from columns array
+      setColumns(prev => prev.filter(col => col.key !== key));
+    } catch (error) {
+      console.error("Delete column error:", error);
+      alert("Failed to delete column.");
+    }
+  };
 
 
   const handleAddColumn = async () => {
@@ -341,14 +376,45 @@ export default function IncomingShipmentsPage() {
                     {columns.map((col, index) => (
                       <TableHead
                         key={col.key}
-                        className={`${col.width} cursor-move`}
+                        className={`${col.width} cursor-move group relative`}
                         draggable
                         onDragStart={() => handleDragStart(index)}
                         onDragOver={handleDragOver}
                         onDrop={() => handleDrop(index)}
                       >
-                        {col.label}
+                        <div className="flex items-center justify-between gap-2">
+                          {editingColumn === col.key ? (
+                            <input
+                              className="border rounded px-1 text-sm"
+                              value={editingColumnLabel}
+                              onChange={(e) => setEditingColumnLabel(e.target.value)}
+                              onBlur={() => handleSaveColumnLabel(col.key)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveColumnLabel(col.key);
+                                if (e.key === "Escape") setEditingColumn(null);
+                              }}
+                              autoFocus
+                            />
+                          ) : (
+                            <span
+                              className="hover:underline"
+                              onDoubleClick={() => handleEditColumn(col)}
+                            >
+                              {col.label}
+                            </span>
+                          )}
+
+                          {/* Delete Button (Visible on hover) */}
+                          <button
+                            className="text-red-500 opacity-0 group-hover:opacity-100 transition text-xs"
+                            onClick={() => handleDeleteColumn(col.key)}
+                            title="Delete column"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </TableHead>
+
                     ))}
                   </TableRow>
                 </TableHeader>
