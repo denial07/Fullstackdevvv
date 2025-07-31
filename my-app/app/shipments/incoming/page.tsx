@@ -37,25 +37,58 @@ export default function IncomingShipmentsPage() {
   const [tempValue, setTempValue] = useState<string>("");
 
 
+
+  // useEffect(() => {
+  //   fetch("/api/shipments")
+  //     .then((res) => res.json())
+  //     .then((data) => {
+  //       if (!data.length) return;
+
+  //       const allKeys = new Set<string>();
+  //       data.forEach((s: any) => Object.keys(s).forEach(k => allKeys.add(k)));
+
+  //       const inferredColumns = Array.from(allKeys).map((key) => ({
+  //         key,
+  //         label: key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+  //         width: "w-32"
+  //       }));
+
+  //       setColumns(inferredColumns);
+  //       setShipments(data);
+  //     });
+  // }, []);
+
   useEffect(() => {
-    fetch("/api/shipments")
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.length) return;
+    const loadShipments = async () => {
+      const res = await fetch("/api/shipments");
+      const data = await res.json();
+      if (!data.length) return;
 
-        const allKeys = new Set<string>();
-        data.forEach((s: any) => Object.keys(s).forEach(k => allKeys.add(k)));
+      const allKeys = Array.from(new Set(data.flatMap(Object.keys)));
 
-        const inferredColumns = Array.from(allKeys).map((key) => ({
-          key,
-          label: key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
-          width: "w-32"
-        }));
-
-        setColumns(inferredColumns);
-        setShipments(data);
+      // Call server-side Gemini normalizer
+      const aliasRes = await fetch("/api/normalize-columns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columns: allKeys }),
       });
+
+      const aliasMap = await aliasRes.json() as Record<string, string>;
+
+      const inferredColumns = Object.entries(aliasMap).map(([label, rawKeys]) => ({
+        key: Array.isArray(rawKeys) ? rawKeys.join("|") : rawKeys, // composite key used for merging
+        label,
+        width: "min-w-[200px]",
+      }));
+
+
+      setColumns(inferredColumns);
+      setShipments(data);
+    };
+
+    loadShipments();
   }, []);
+
 
   const handleAddColumn = async () => {
     console.log("🔔 Add column triggered"); // Confirm it's called
@@ -138,6 +171,12 @@ export default function IncomingShipmentsPage() {
     // Fields you don't want editable
     const nonEditableFields = ["_id", "id", "trackingNumber", "delay"];
     const editable = !nonEditableFields.includes(key) && typeof value !== "object";
+
+    if (key.includes("|")) {
+      const mergedKeys = key.split("|");
+      const mergedValue = mergedKeys.map(k => shipment[k]).find(v => v != null && v !== "") ?? "-";
+      return mergedValue;
+    }
 
     // Format special fields (outside edit mode only)
     if (!isEditing) {
