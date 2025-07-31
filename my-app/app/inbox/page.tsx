@@ -73,7 +73,8 @@ interface EmailAnalysis {
     destination?: string
     estimatedDelivery?: string
     carrier?: string
-    items?: Array<{ name: string; quantity?: number; description?: string }>
+    items?: Array<{ name: string; quantity?: number; description?: string; price?: number }>
+    price?: number
     urgency?: string
     actionRequired?: boolean
     notes?: string
@@ -778,6 +779,12 @@ export default function InboxPage() {
                                   <div className="text-sm font-medium">{emailAnalysis.extractedData.status}</div>
                                 </div>
                               )}
+                              {emailAnalysis.extractedData?.price && (
+                                <div>
+                                  <label className="text-xs font-medium text-gray-500 uppercase">Price</label>
+                                  <div className="text-sm font-medium text-green-600">${emailAnalysis.extractedData.price}</div>
+                                </div>
+                              )}
                               {emailAnalysis.extractedData?.trackingNumber && (
                                 <div>
                                   <label className="text-xs font-medium text-gray-500 uppercase">Tracking Number</label>
@@ -828,9 +835,16 @@ export default function InboxPage() {
                                 <div className="space-y-1">
                                   {emailAnalysis.extractedData.items.map((item, index) => (
                                     <div key={index} className="text-sm bg-gray-50 rounded p-2">
-                                      <span className="font-medium">{item.name}</span>
-                                      {item.quantity && <span className="text-gray-600"> (Qty: {item.quantity})</span>}
-                                      {item.description && <div className="text-xs text-gray-500">{item.description}</div>}
+                                      <div className="flex justify-between items-start">
+                                        <div className="flex-1">
+                                          <span className="font-medium">{item.name}</span>
+                                          {item.quantity && <span className="text-gray-600"> (Qty: {item.quantity})</span>}
+                                          {item.description && <div className="text-xs text-gray-500">{item.description}</div>}
+                                        </div>
+                                        {item.price && (
+                                          <div className="text-sm font-medium text-green-600">${item.price}</div>
+                                        )}
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
