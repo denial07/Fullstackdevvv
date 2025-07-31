@@ -101,6 +101,7 @@ export default function InboxPage() {
   const [emailAnalysis, setEmailAnalysis] = useState<EmailAnalysis | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isSavingShipment, setIsSavingShipment] = useState(false)
+  const [shipmentSaved, setShipmentSaved] = useState(false)
 
   const filteredEmails = emails.filter((email) => {
     const matchesSearch =
@@ -140,6 +141,7 @@ export default function InboxPage() {
     setSelectedEmail(email)
     setIsEmailDialogOpen(true)
     setEmailAnalysis(null) // Reset analysis when opening new email
+    setShipmentSaved(false) // Reset saved state when opening new email
     if (!email.isRead) {
       // Mark as read locally
       setEmails((prev) => prev.map((e) => (e.id === email.id ? { ...e, isRead: true } : e)))
@@ -249,6 +251,7 @@ export default function InboxPage() {
 
       if (data.success) {
         console.log("Shipment saved successfully!")
+        setShipmentSaved(true) // Set saved state to true
         toast.dismiss(loadingToast)
         toast.success("Shipment data saved successfully! ✅", {
           description: `${data.message} - Tracking: ${data.shipment.trackingNumber || 'N/A'}`,
@@ -864,18 +867,30 @@ export default function InboxPage() {
                               </div>
                             )}
 
-                            <Button 
-                              onClick={saveShipmentData}
-                              disabled={isSavingShipment}
-                              className="w-full"
-                            >
-                              {isSavingShipment ? (
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              ) : (
-                                <Save className="h-4 w-4 mr-2" />
-                              )}
-                              {isSavingShipment ? "Saving..." : "Commit Changes to Database"}
-                            </Button>
+                            {shipmentSaved ? (
+                              <div className="bg-green-50 border border-green-200 rounded p-4">
+                                <div className="flex items-center mb-2">
+                                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                                  <span className="font-medium text-green-800">Successfully Saved to Database</span>
+                                </div>
+                                <div className="text-sm text-green-700">
+                                  Shipment data has been committed to your database and is now available in your shipments dashboard.
+                                </div>
+                              </div>
+                            ) : (
+                              <Button 
+                                onClick={saveShipmentData}
+                                disabled={isSavingShipment}
+                                className="w-full"
+                              >
+                                {isSavingShipment ? (
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                  <Save className="h-4 w-4 mr-2" />
+                                )}
+                                {isSavingShipment ? "Saving..." : "Commit Changes to Database"}
+                              </Button>
+                            )}
                           </div>
                         ) : (
                           <div className="bg-white rounded-lg p-4 border">
