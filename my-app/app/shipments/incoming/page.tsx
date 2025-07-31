@@ -36,7 +36,8 @@ export default function IncomingShipmentsPage() {
   const [editingCell, setEditingCell] = useState<{ id: string, key: string } | null>(null);
   const [tempValue, setTempValue] = useState<string>("");
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
-  const [editingColumnLabel, setEditingColumnLabel] = useState("");
+  const [editingColumnLabel, setEditingColumnLabel] = useState<string>("");
+
 
 
 
@@ -385,7 +386,7 @@ export default function IncomingShipmentsPage() {
                         <div className="flex items-center justify-between gap-2">
                           {editingColumn === col.key ? (
                             <input
-                              className="border rounded px-1 text-sm"
+                              className="border rounded px-1 text-sm w-full"
                               value={editingColumnLabel}
                               onChange={(e) => setEditingColumnLabel(e.target.value)}
                               onBlur={() => handleSaveColumnLabel(col.key)}
@@ -397,14 +398,13 @@ export default function IncomingShipmentsPage() {
                             />
                           ) : (
                             <span
-                              className="hover:underline"
+                              className="hover:underline w-full"
                               onDoubleClick={() => handleEditColumn(col)}
                             >
                               {col.label}
                             </span>
                           )}
 
-                          {/* Delete Button (Visible on hover) */}
                           <button
                             className="text-red-500 opacity-0 group-hover:opacity-100 transition text-xs"
                             onClick={() => handleDeleteColumn(col.key)}
@@ -414,6 +414,7 @@ export default function IncomingShipmentsPage() {
                           </button>
                         </div>
                       </TableHead>
+
 
                     ))}
                   </TableRow>

@@ -5,6 +5,35 @@ import {
     getInventorySummary,
     getOrdersSummary,
 } from "@/lib/summaries"
+import { connectToDatabase } from "@/lib/mongodb"
+
+export async function getAllShipments() {
+    const client = await connectToDatabase()
+    const db = client.db("test") // from your screenshot
+    const collection = db.collection("shipments")
+
+    const shipments = await collection
+        .find({}, {
+            projection: {
+                _id: 0, // omit MongoDB's default _id
+                id: 1,
+                type: 1,
+                vendor: 1,
+                description: 1,
+                price: 1,
+                status: 1,
+                eta: 1,
+                deliveredDate: 1,
+                "Arrival-destination": 1,
+                createdAt: 1,
+                updatedAt: 1,
+            },
+        })
+        .toArray()
+
+    return shipments
+}
+
 
 
 
