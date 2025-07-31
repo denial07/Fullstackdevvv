@@ -279,12 +279,6 @@ export function PasswordGenerator({ onPasswordSelect, className }: PasswordGener
               }}
             />
             
-            {passwordStrength.crackTime && (
-              <div className="text-sm text-gray-600">
-                <strong>Estimated crack time:</strong> {passwordStrength.crackTime}
-              </div>
-            )}
-            
             {passwordStrength.feedback.length > 0 && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />

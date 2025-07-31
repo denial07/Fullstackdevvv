@@ -2,6 +2,7 @@ import { connectToDatabase } from "@/lib/mongodb";
 import User from "@/lib/models/User";
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import nodemailer from "nodemailer";
 
 // POST /api/users - Create new user
 export async function POST(req: NextRequest) {
@@ -48,7 +49,61 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date()
     });
 
-    // TODO: Send email to user with temporary password
+    // Setup email transporter
+    // Import nodemailer (move to top if needed)
+    // ...existing code...
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+
+    // Email content to user
+    const userMailOptions = {
+      from: process.env.EMAIL_USER || 'noreply@palletworks.sg',
+      to: email,
+      subject: '🎉 Welcome to Singapore Pallet Works Dashboard',
+      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb;">Welcome, ${name}!</h2>
+        <p>Your account has been created. Here is your temporary password:</p>
+        <p style="font-size: 20px; font-weight: bold; color: #22c55e;">${temporaryPassword}</p>
+        <p>Please log in and change your password as soon as possible.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+        <p style="font-size: 12px; color: #6b7280;">This is an automated message. Please do not reply to this email.</p>
+      </div>`
+    };
+
+    // Email content to admin (if user email fails)
+    const adminMailOptions = {
+      from: process.env.EMAIL_USER || 'noreply@palletworks.sg',
+      to: process.env.EMAIL_USER || 'yeexian2007@gmail.com',
+      subject: '⚠️ User Creation: Email Delivery Failed',
+      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #dc2626;">User Creation: Email Delivery Failed</h2>
+        <p>Failed to deliver account credentials to:</p>
+        <p style="font-weight: bold; color: #2563eb;">${email}</p>
+        <p>Temporary password: <span style="font-weight: bold; color: #22c55e;">${temporaryPassword}</span></p>
+        <p>Please contact the user manually.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+        <p style="font-size: 12px; color: #6b7280;">This is an automated message. Please do not reply to this email.</p>
+      </div>`
+    };
+
+    try {
+      await transporter.sendMail(userMailOptions);
+      console.log("📧 User credentials sent to:", email);
+    } catch (userEmailError) {
+      console.error("❌ Failed to send user credentials to:", email, userEmailError);
+      // Forward to admin
+      try {
+        await transporter.sendMail(adminMailOptions);
+        console.log("📧 Admin notified of failed user email for:", email);
+      } catch (adminEmailError) {
+        console.error("❌ Failed to notify admin:", adminEmailError);
+      }
+    }
 
     return NextResponse.json({
       message: "User created successfully",
