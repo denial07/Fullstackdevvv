@@ -1,20 +1,24 @@
 import { connectToDatabase } from "@/lib/mongodb";
 import Shipment from "@/lib/models/Shipment";
 import { NextResponse } from "next/server";
+import { inferDataTypeWithGemini } from "@/lib/gemini";
 
-// GET existing shipments
-export async function GET() {
-    try {
-        await connectToDatabase();
-        const shipments = await Shipment.find().lean();
-        return NextResponse.json(shipments);
-    } catch (error) {
-        console.error(error);
-        return NextResponse.json({ error: "Failed to fetch shipments" }, { status: 500 });
+// Converts Gemini-inferred type to actual default value
+function getDefaultValue(type: string): any {
+    switch (type) {
+        case "number":
+            return 0;
+        case "boolean":
+            return false;
+        case "date":
+            return new Date().toISOString(); // ISO string for consistency
+        case "string":
+        default:
+            return "";
     }
 }
 
-// POST: Add a new column to all shipments
+// POST: Add a new column to all shipments using Gemini for type inference
 export async function POST(req: Request) {
     try {
         const { columnKey } = await req.json();
@@ -25,35 +29,20 @@ export async function POST(req: Request) {
 
         await connectToDatabase();
 
+        // 🔮 Use Gemini to infer type
+        const inferredType = await inferDataTypeWithGemini(columnKey);
+        const defaultValue = getDefaultValue(inferredType);
+
+        // ✅ Set new field with default value
         await Shipment.updateMany({}, {
-            $set: { [columnKey]: null }
+            $set: { [columnKey]: defaultValue }
         });
 
-        return NextResponse.json({ message: `Column '${columnKey}' added to all documents.` }, { status: 200 });
-    } catch (error) {
-        console.error("❌ Error updating shipments with new column:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
-}
-
-// DELETE: Remove a column from all shipments
-export async function DELETE(req: Request) {
-    try {
-        const { columnKey } = await req.json();
-
-        if (!columnKey || typeof columnKey !== "string") {
-            return NextResponse.json({ error: "Missing or invalid column key" }, { status: 400 });
-        }
-
-        await connectToDatabase();
-
-        await Shipment.updateMany({}, {
-            $unset: { [columnKey]: "" }
+        return NextResponse.json({
+            message: `✅ Column '${columnKey}' added to all shipments with inferred type '${inferredType}' and default value.`,
         });
-
-        return NextResponse.json({ message: `Column '${columnKey}' removed from all documents.` }, { status: 200 });
     } catch (error) {
-        console.error("❌ Error removing column from shipments:", error);
+        console.error("❌ Gemini column inference error:", error);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }

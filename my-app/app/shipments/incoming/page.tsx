@@ -97,12 +97,42 @@ export default function IncomingShipmentsPage() {
     setEditingColumnLabel(col.label);
   };
 
-  const handleSaveColumnLabel = (key: string) => {
-    setColumns(prev =>
-      prev.map(col => col.key === key ? { ...col, label: editingColumnLabel } : col)
-    );
-    setEditingColumn(null);
+  const handleSaveColumnLabel = async (oldKey: string) => {
+    const newKey = editingColumnLabel.trim();
+
+    if (!newKey || newKey === oldKey) {
+      setEditingColumn(null);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/shipments", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldKey, newKey }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        alert("❌ Failed to rename column: " + (errorData.error || "Unknown error"));
+        throw new Error("Rename failed");
+      }
+
+
+      // Update column list in UI
+      setColumns(prev =>
+        prev.map(col =>
+          col.key === oldKey ? { ...col, key: newKey, label: newKey } : col
+        )
+      );
+    } catch (error) {
+      console.error("Rename error:", error);
+      alert("Failed to rename column.");
+    } finally {
+      setEditingColumn(null);
+    }
   };
+
 
   const handleDeleteColumn = async (key: string) => {
     const confirmDelete = window.confirm(`Are you sure you want to delete column "${key}" from all shipments?`);
@@ -127,9 +157,10 @@ export default function IncomingShipmentsPage() {
 
 
   const handleAddColumn = async () => {
-    console.log("🔔 Add column triggered"); // Confirm it's called
+    console.log("🔔 Add column triggered");
 
     if (!newColumn.trim()) return;
+
     const newColKey = newColumn.trim().toLowerCase().replace(/\s+/g, "_");
 
     const newCol = {
@@ -138,17 +169,40 @@ export default function IncomingShipmentsPage() {
       width: "w-32"
     };
 
+    // Optimistically update columns UI
     setColumns((prev) => [...prev, newCol]);
     setNewColumn("");
 
-    await fetch("/api/shipments/add-column", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ columnKey: newColKey }),
-    });
+    try {
+      const res = await fetch("/api/shipments/add-column", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columnKey: newColKey }),
+      });
 
-    setShipments((prev) => prev.map((s) => ({ ...s, [newColKey]: s[newColKey] ?? null })));
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to add column");
+      }
+
+      // Optional: parse default value from backend response (if added later)
+      // For now, we assume based on key — fallback for UI update only
+      const inferredDefault = inferLocalDefaultValue(newColKey); // helper function below
+
+      // Update local shipment state
+      setShipments((prev) =>
+        prev.map((s) => ({
+          ...s,
+          [newColKey]: s[newColKey] ?? inferredDefault,
+        }))
+      );
+    } catch (error) {
+      console.error("❌ Error adding column:", error);
+      alert("Error adding column: " + (error as Error).message);
+    }
   };
+
 
 
 
@@ -438,3 +492,14 @@ export default function IncomingShipmentsPage() {
     </div>
   );
 }
+function inferLocalDefaultValue(newColKey: string) {
+  // Guess a default value based on the column key
+  if (/date/i.test(newColKey)) return new Date().toISOString().slice(0, 10); // e.g. "2024-06-09"
+  if (/status/i.test(newColKey)) return "Processing";
+  if (/value|amount|price|cost/i.test(newColKey)) return 0;
+  if (/name|vendor|supplier/i.test(newColKey)) return "";
+  if (/delay/i.test(newColKey)) return 0;
+  if (/tracking/i.test(newColKey)) return "";
+  return "";
+}
+

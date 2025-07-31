@@ -1,44 +1,12 @@
 // app/api/chat/route.ts
-import { NextRequest, NextResponse } from "next/server"
-import {
-    getShipmentSummary,
-    getInventorySummary,
-    getOrdersSummary,
-} from "@/lib/summaries"
-import { connectToDatabase } from "@/lib/mongodb"
 
-export async function getAllShipments() {
-    const client = await connectToDatabase()
-    const db = client.db("test") // from your screenshot
-    const collection = db.collection("shipments")
-
-    const shipments = await collection
-        .find({}, {
-            projection: {
-                _id: 0, // omit MongoDB's default _id
-                id: 1,
-                type: 1,
-                vendor: 1,
-                description: 1,
-                price: 1,
-                status: 1,
-                eta: 1,
-                deliveredDate: 1,
-                "Arrival-destination": 1,
-                createdAt: 1,
-                updatedAt: 1,
-            },
-        })
-        .toArray()
-
-    return shipments
-}
-
-
-
+import { NextRequest, NextResponse } from 'next/server'
+import { connectToDatabase } from '@/lib/mongodb'
+import Shipment from '@/lib/models/Shipment'
+import Inventory from '@/lib/models/Inventory'
 
 const GEMINI_API_URL =
-    "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent"
+    'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent'
 
 export async function POST(req: NextRequest) {
     try {
@@ -47,101 +15,87 @@ export async function POST(req: NextRequest) {
 
         if (!message || !apiKey) {
             return NextResponse.json(
-                { error: "Missing message or API key" },
+                { error: 'Missing user message or Gemini API key.' },
                 { status: 400 }
             )
         }
 
-        // Fetch summaries from MongoDB
-        const [shipments, inventory, orders] = await Promise.all([
-            getShipmentSummary(),
-            getInventorySummary(),
-            getOrdersSummary(),
+        // 1. Connect to MongoDB
+        await connectToDatabase()
+
+        // 2. Fetch raw data
+        const [shipments, inventory] = await Promise.all([
+            Shipment.find({}).lean(),
+            Inventory.find({}).lean(),
         ])
 
-        // Construct context from DB
+        // Sample the first 5 records for context
+        const sampleShipments = shipments.slice(0, 5)
+        const sampleInventory = inventory.slice(0, 5)
+
+        // 3. Format context
         const context = `
-📦 SHIPMENT SUMMARY
-- Total Shipments: ${shipments.total}
-- In Transit: ${shipments.inTransit}
-- Preparing: ${shipments.preparing}
-- Delivered: ${shipments.arrived}
-- Delayed: ${shipments.delayed}
-- Total Shipment Value: $${shipments.totalValue.toLocaleString()}
+📦 SHIPMENTS DATA:
+${JSON.stringify(sampleShipments, null, 2)}
 
-📦 INVENTORY SUMMARY
-- Total Inventory Items: ${inventory.totalItems}
-- Low Stock Items: ${inventory.lowStock}
-- Expiring Soon: ${inventory.expiringSoon}
-- Expired Items: ${inventory.expired}
-- Total Inventory Value: $${inventory.totalValue.toLocaleString()}
-
-📦 ORDER SUMMARY
-- Total Orders: ${orders.total}
-- Pending: ${orders.pending}
-- Paid: ${orders.paid}
-- Shipped: ${orders.shipped}
-- Delivered: ${orders.delivered}
-- Total Order Value: $${orders.totalValue.toLocaleString()}
+📦 INVENTORY DATA:
+${JSON.stringify(sampleInventory, null, 2)}
 `
 
-        // Construct smart assistant prompt
+        // 4. Construct Gemini prompt
         const prompt = `
-You are a helpful, friendly AI assistant for a logistics and inventory dashboard. 
-Your role is to analyze business data (shipments, inventory, orders) and respond to user questions.
+You are a logistics assistant. Here is some sample shipment data:
+${JSON.stringify(sampleShipments, null, 2)}
 
-🧠 Your response must:
-- Be friendly and professional
-- Use clear formatting: headings, bullet points, and emojis where helpful (📦, ✅, ⚠️, 💡)
-- Avoid technical jargon; explain insights simply
-- Include relevant tips or proactive suggestions (e.g., restocking, optimizing routes, following up on late orders)
-- Keep responses concise but insightful
+User question: ${message}
 
-Here’s the latest business data:
-${context}
-
-Now, answer the user's question below:
-
-User: ${message}
+Answer in a friendly, concise way.
 `
 
-
-        // Send to Gemini
+        // 5. Send to Gemini API
         const geminiRes = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-            method: "POST",
+            method: 'POST',
             headers: {
-                "Content-Type": "application/json",
+                'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 contents: [
                     {
-                        role: "user",
+                        role: 'user',
                         parts: [{ text: prompt }],
                     },
                 ],
             }),
         })
 
-        const data = await geminiRes.json()
-        console.log("Gemini raw response:", JSON.stringify(data, null, 2))
+        const geminiData = await geminiRes.json()
+        console.log('Gemini raw response:', JSON.stringify(geminiData, null, 2))
+        const geminiReply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text
 
-        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text
-
-        if (!reply) {
+        if (!geminiReply) {
             return NextResponse.json(
                 {
-                    reply:
-                        "⚠️ Gemini didn't return a valid response. Try rephrasing or check your API key.",
+                    error: 'Gemini did not return a valid response.',
                 },
                 { status: 200 }
             )
         }
 
-        return NextResponse.json({ reply }, { status: 200 })
-    } catch (error) {
-        console.error("Gemini API error:", error)
+        // 6. Return success
         return NextResponse.json(
-            { error: "Internal server error while calling Gemini API." },
+            {
+                reply: geminiReply,
+            },
+            { status: 200 }
+        )
+    } catch (error: any) {
+        console.error('API Error in /api/chat:', error)
+
+        return NextResponse.json(
+            {
+                error: 'Failed to process request',
+                details: error.message || 'An unknown error occurred.',
+            },
             { status: 500 }
         )
     }

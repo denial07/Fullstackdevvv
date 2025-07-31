@@ -14,33 +14,59 @@ export async function GET() {
     }
 }
 
-
-export async function POST(req: Request) {
+export async function PUT(req: Request) {
     try {
-        await connectToDatabase();
-        
-        const data = await req.json();
-        console.log("Creating shipment with data:", data);
-        
-        // Check if this is a column addition request
-        if (data.columnKey) {
-            // Handle column addition
-            await Shipment.updateMany(
-                { [data.columnKey]: { $exists: false } },
-                { $set: { [data.columnKey]: null } }
-            );
-            return NextResponse.json({ message: `Column '${data.columnKey}' added.` }, { status: 200 });
+        const { oldKey, newKey } = await req.json();
+        console.log("🔁 Rename request:", { oldKey, newKey });
+
+        if (!oldKey || !newKey || typeof oldKey !== "string" || typeof newKey !== "string") {
+            return NextResponse.json({ error: "Invalid keys" }, { status: 400 });
         }
-        
-        // Handle shipment creation
-        const shipment = new Shipment(data);
-        const savedShipment = await shipment.save();
-        
-        console.log("Shipment created successfully:", savedShipment._id);
-        return NextResponse.json(savedShipment, { status: 201 });
-        
+
+        await connectToDatabase();
+
+        const docs = await Shipment.find({ [oldKey]: { $exists: true } });
+
+        console.log(`📦 Found ${docs.length} documents to rename '${oldKey}' ➝ '${newKey}'`);
+
+        for (const doc of docs) {
+            const valueToCopy = doc.get(oldKey);
+
+            // Skip if the new key already exists to avoid overwriting
+            if (doc.get(newKey) === undefined) {
+                doc.set(newKey, valueToCopy);
+            }
+
+            doc.set(oldKey, undefined);
+            await doc.save();
+        }
+
+        return NextResponse.json({ message: `Renamed '${oldKey}' to '${newKey}' in ${docs.length} documents.` });
     } catch (error: any) {
-        console.error("❌ Error in POST handler:", error);
+        console.error("❌ Rename error:", error.message);
         return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+    }
+}
+
+
+
+export async function DELETE(req: Request) {
+    try {
+        const { columnKey } = await req.json();
+
+        if (!columnKey || typeof columnKey !== "string") {
+            return NextResponse.json({ error: "Missing or invalid column key" }, { status: 400 });
+        }
+
+        await connectToDatabase();
+
+        await Shipment.updateMany({}, {
+            $unset: { [columnKey]: "" }
+        });
+
+        return NextResponse.json({ message: `Column '${columnKey}' removed from all documents.` });
+    } catch (error) {
+        console.error("DELETE error:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
