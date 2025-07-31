@@ -33,7 +33,8 @@ Please analyze this email and respond with a JSON object containing:
    - "destination": string (delivery location)
    - "estimatedDelivery": string (delivery date/time if mentioned)
    - "carrier": string (shipping company)
-   - "items": array of items being shipped
+   - "items": array of items being shipped with format: [{"name": "item name", "quantity": number, "description": "details", "price": number}]
+   - "price": number (total shipment value or cost if mentioned - look for currency symbols, numbers with decimal points, words like 'cost', 'value', 'total', 'amount')
    - "urgency": string ("high", "medium", "low")
    - "actionRequired": boolean - if recipient needs to take action
    - "notes": string (any additional important information)
@@ -41,6 +42,18 @@ Please analyze this email and respond with a JSON object containing:
 5. "suggestedAction": string - what action should be taken based on this email
 
 Important: Most shipping notifications (delays, deliveries, tracking updates) are about INCOMING shipments unless explicitly about something you sent out.
+
+PRICE EXTRACTION GUIDELINES:
+- Look for any monetary amounts mentioned in the email (e.g., $123.45, £50, €75.99, 1000.00, etc.)
+- Check for keywords like: cost, price, value, total, amount, fee, charge, invoice, bill
+- Extract the numerical value without currency symbols
+- If multiple prices are mentioned, use the total or largest amount
+
+ITEMS EXTRACTION GUIDELINES:
+- Look for lists of products, materials, or goods being shipped
+- Extract item names, quantities, and individual prices if mentioned
+- Look for patterns like "10x Widget A - $50 each" or "5 units of Product B"
+- Include part numbers, SKUs, or model numbers if present
 
 If the email is not shipment-related, return:
 {

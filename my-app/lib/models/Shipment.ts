@@ -29,6 +29,9 @@ export interface ShipmentDoc extends Document {
         emailSubject?: string;
         emailFrom?: any;
         emailTimestamp?: Date;
+        originalType?: string;
+        items?: Array<{ name: string; quantity?: number; description?: string; price?: number }>;
+        extractedPrice?: number;
     };
 }
 
@@ -58,7 +61,15 @@ const ShipmentSchema = new Schema<ShipmentDoc>(
             suggestedAction: String,
             emailSubject: String,
             emailFrom: Schema.Types.Mixed,
-            emailTimestamp: Date
+            emailTimestamp: Date,
+            originalType: String,
+            items: [{
+                name: String,
+                quantity: Number,
+                description: String,
+                price: Number
+            }],
+            extractedPrice: Number
         }
     },
     { timestamps: true }

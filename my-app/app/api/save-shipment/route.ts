@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       id: businessId, // Required unique business ID in proper format
       type: shipmentType, // Required: incoming or outgoing
       status: analysisResult.extractedData?.status || 'In Transit', // Required
-      price: 0, // Required by schema, set to 0 for email shipments
+      price: analysisResult.extractedData?.price || 0, // Use extracted price or default to 0
       description: analysisResult.summary || 'Email-analyzed shipment',
       destination: analysisResult.extractedData?.destination || 'warehouse-A',
       vendor: shipmentType === 'incoming' ? (analysisResult.extractedData?.carrier || 'Email Vendor') : undefined,
@@ -78,7 +78,9 @@ export async function POST(request: NextRequest) {
         emailSubject: emailData.subject,
         emailFrom: emailData.from,
         emailTimestamp: new Date(emailData.timestamp),
-        originalType: analysisResult.type // Store the original AI analysis type
+        originalType: analysisResult.type, // Store the original AI analysis type
+        items: analysisResult.extractedData?.items || [], // Store extracted items
+        extractedPrice: analysisResult.extractedData?.price // Store original extracted price
       }
     }
     console.log("Shipment data created:", JSON.stringify(shipmentData, null, 2));
