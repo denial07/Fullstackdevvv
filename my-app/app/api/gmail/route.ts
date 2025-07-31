@@ -3,11 +3,11 @@ import { getRecentEmails, markAsRead, markAsUnread, toggleStar } from "@/lib/gma
 
 export async function GET() {
   try {
-    console.log("🔄 Fetching emails from Gmail API...")
+    console.log("🔄 Fetching shipment-related emails from Gmail API...")
 
     const emails = await getRecentEmails(50)
 
-    console.log(`✅ Successfully fetched ${emails.length} emails from Gmail`)
+    console.log(`✅ Successfully fetched ${emails.length} shipment-related emails from Gmail`)
 
     return NextResponse.json({
       success: true,
@@ -21,7 +21,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to fetch emails from Gmail",
+        error: "Failed to fetch shipment emails from Gmail",
         details: error.message,
         timestamp: new Date().toISOString(),
       },

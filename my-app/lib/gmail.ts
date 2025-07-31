@@ -22,7 +22,7 @@ export function getGmailClient() {
   return google.gmail({ version: "v1", auth })
 }
 
-// Get emails from last 3 days
+// Get emails from last 3 days - filtered for shipment-related content
 export async function getRecentEmails(maxResults = 50) {
   try {
     const gmail = getGmailClient()
@@ -32,8 +32,24 @@ export async function getRecentEmails(maxResults = 50) {
     threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
     const dateString = threeDaysAgo.toISOString().split("T")[0].replace(/-/g, "/")
 
-    // Search query for emails from last 3 days
-    const query = `after:${dateString}`
+    // Shipment-related keywords for Gmail search
+    const shipmentKeywords = [
+      "shipment", "shipping", "delivery", "tracking", "package", "parcel",
+      "fedex", "ups", "dhl", "usps", "freight", "cargo", "logistics",
+      "dispatch", "consignment", "manifest", "warehouse", "transit",
+      "pickup", "dropoff", "invoice", "bill of lading", "packing list",
+      "order", "purchase", "supplier", "vendor", "carrier", "transport",
+      "arrived", "departed", "in transit", "out for delivery", "delivered",
+      "customs", "port", "container", "vessel", "truck", "rail",
+      "estimated delivery", "tracking number", "eta", "etd"
+    ]
+
+    // Build search query with shipment keywords and date filter
+    // Use subject and body search for better results
+    const keywordQuery = shipmentKeywords.map(keyword => `(subject:"${keyword}" OR "${keyword}")`).join(" OR ")
+    const query = `after:${dateString} (${keywordQuery})`
+
+    console.log("🔍 Gmail search query:", query)
 
     // Get message list
     const response = await gmail.users.messages.list({
