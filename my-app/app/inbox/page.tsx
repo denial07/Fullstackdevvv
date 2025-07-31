@@ -394,8 +394,8 @@ export default function InboxPage() {
   const fetchGmailEmails = async () => {
     setIsLoadingGmail(true)
 
-    const loadingToast = toast.loading("Fetching emails from Gmail...", {
-      description: "Retrieving emails from the last 3 days",
+    const loadingToast = toast.loading("Fetching shipment emails from Gmail...", {
+      description: "Searching for shipment-related emails from the last 3 days",
     })
 
     try {
@@ -411,8 +411,8 @@ export default function InboxPage() {
         setLastSyncTime(data.timestamp)
 
         toast.dismiss(loadingToast)
-        toast.success(`Successfully loaded ${data.count} emails! 📧`, {
-          description: `Retrieved emails from the last 3 days via Gmail API`,
+        toast.success(`Successfully loaded ${data.count} shipment emails! �`, {
+          description: `Found shipment-related emails from the last 3 days`,
         })
       } else {
         throw new Error(data.error || "Failed to fetch emails")
@@ -421,7 +421,7 @@ export default function InboxPage() {
       console.error("Error fetching Gmail emails:", error)
 
       toast.dismiss(loadingToast)
-      toast.error("Failed to fetch Gmail emails", {
+      toast.error("Failed to fetch shipment emails", {
         description: error.message || "Please check your Gmail API configuration",
       })
     } finally {
@@ -527,7 +527,7 @@ export default function InboxPage() {
                 ) : (
                   <CloudDownload className="h-4 w-4 mr-2" />
                 )}
-                {isLoadingGmail ? "Loading..." : "Get Gmail (3 days)"}
+                {isLoadingGmail ? "Loading..." : "Get Shipment Emails"}
               </Button>
               <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
                 <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
@@ -582,7 +582,7 @@ export default function InboxPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="text-sm text-gray-600">
-                  Click "Get Gmail" to fetch your latest emails from the last 3 days using Google's Gmail API.
+                  Click "Get Shipment Emails" to fetch shipment-related emails from the last 3 days using advanced Gmail search filters.
                 </div>
                 {lastSyncTime && (
                   <div className="text-xs text-gray-500">Last synced: {new Date(lastSyncTime).toLocaleString()}</div>
@@ -699,11 +699,11 @@ export default function InboxPage() {
                     <div className="text-center py-12">
                       <Mail className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        {emails.length === 0 ? "No emails loaded" : "No emails found"}
+                        {emails.length === 0 ? "No shipment emails loaded" : "No emails found"}
                       </h3>
                       <p className="text-gray-500 mb-4">
                         {emails.length === 0
-                          ? "Click 'Get Gmail' to fetch your emails from the last 3 days"
+                          ? "Click 'Get Shipment Emails' to fetch shipment-related emails from the last 3 days"
                           : "Try adjusting your search or filter criteria"}
                       </p>
                       {emails.length === 0 && (
@@ -713,7 +713,7 @@ export default function InboxPage() {
                           ) : (
                             <CloudDownload className="h-4 w-4 mr-2" />
                           )}
-                          Get Gmail Emails
+                          Get Shipment Emails
                         </Button>
                       )}
                     </div>
