@@ -1,5 +1,6 @@
-require('dotenv').config({ path: '.env.local' });
-const mongoose = require('mongoose');
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+import mongoose from 'mongoose';
 
 // Users data to seed
 const usersData = [

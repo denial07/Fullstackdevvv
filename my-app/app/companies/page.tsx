@@ -8,7 +8,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { Building2, Edit3, Save, X, Trash2, Eye, AlertCircle, Mail, User, Clock, CheckCircle, RefreshCw, Users, Settings, Shield, UserPlus, Key, Pause, Play, UserCheck, UserX } from "lucide-react"
+import { Building2, Edit3, Save, X, Trash2, Eye, AlertCircle, Mail, User, Clock, CheckCircle, RefreshCw, Users, Shield, UserPlus, Key, Pause, Play, UserCheck, UserX } from "lucide-react"
 
 interface CompanyData {
   id: string;

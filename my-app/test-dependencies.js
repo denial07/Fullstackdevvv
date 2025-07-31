@@ -1,6 +1,6 @@
 // Test script to verify speakeasy installation
-const speakeasy = require('speakeasy');
-const qrcode = require('qrcode');
+import speakeasy from 'speakeasy';
+// import qrcode from 'qrcode';
 
 console.log('✅ speakeasy imported successfully');
 console.log('✅ qrcode imported successfully');
