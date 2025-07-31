@@ -33,6 +33,9 @@ export default function IncomingShipmentsPage() {
   const [columns, setColumns] = useState<any[]>([]);
   const [newColumn, setNewColumn] = useState("");
   const [draggedColIndex, setDraggedColIndex] = useState<number | null>(null);
+  const [editingCell, setEditingCell] = useState<{ id: string, key: string } | null>(null);
+  const [tempValue, setTempValue] = useState<string>("");
+
 
   useEffect(() => {
     fetch("/api/shipments")
@@ -55,7 +58,7 @@ export default function IncomingShipmentsPage() {
   }, []);
 
   const handleAddColumn = async () => {
-      console.log("🔔 Add column triggered"); // Confirm it's called
+    console.log("🔔 Add column triggered"); // Confirm it's called
 
     if (!newColumn.trim()) return;
     const newColKey = newColumn.trim().toLowerCase().replace(/\s+/g, "_");
@@ -104,29 +107,121 @@ export default function IncomingShipmentsPage() {
     setDraggedColIndex(null);
   };
 
+  // const renderCellContent = (shipment: any, key: string) => {
+  //   const value = shipment[key];
+
+  //   if (key === "value") return value?.toLocaleString() ?? "-";
+  //   if (key === "status") return <Badge variant={getStatusColor(value)}>{value}</Badge>;
+  //   if (key === "delay") return value > 0 ? (
+  //     <span className="text-red-600 font-medium">{value}</span>
+  //   ) : <span className="text-green-600">0</span>;
+
+  //   const editable = key !== "delay" && key !== "trackingNumber" && key !== "id";
+
+  //   if (editable) {
+  //     return (
+  //       <input
+  //         className="bg-transparent border-b border-gray-300 focus:outline-none focus:border-black w-full"
+  //         defaultValue={value ?? ""}
+  //         onBlur={(e) => handleEdit(shipment._id, key, e.target.value)}
+  //       />
+  //     );
+  //   }
+
+  //   return value ?? "-";
+  // };
+
   const renderCellContent = (shipment: any, key: string) => {
     const value = shipment[key];
+    const isEditing = editingCell?.id === shipment._id && editingCell?.key === key;
 
-    if (key === "value") return value?.toLocaleString() ?? "-";
-    if (key === "status") return <Badge variant={getStatusColor(value)}>{value}</Badge>;
-    if (key === "delay") return value > 0 ? (
-      <span className="text-red-600 font-medium">{value}</span>
-    ) : <span className="text-green-600">0</span>;
+    // Fields you don't want editable
+    const nonEditableFields = ["_id", "id", "trackingNumber", "delay"];
+    const editable = !nonEditableFields.includes(key) && typeof value !== "object";
 
-    const editable = key !== "delay" && key !== "trackingNumber" && key !== "id";
+    // Format special fields (outside edit mode only)
+    if (!isEditing) {
+      if (key === "value") {
+        return value ? `S$${Number(value).toLocaleString("en-SG")}` : "-";
+      }
 
-    if (editable) {
-      return (
-        <input
-          className="bg-transparent border-b border-gray-300 focus:outline-none focus:border-black w-full"
-          defaultValue={value ?? ""}
-          onBlur={(e) => handleEdit(shipment._id, key, e.target.value)}
-        />
-      );
+      if (key === "status") {
+        return <Badge variant={getStatusColor(value)}>{value}</Badge>;
+      }
+
+      if (key === "delay") {
+        return value > 0 ? (
+          <span className="text-red-600 font-medium">{value}</span>
+        ) : (
+          <span className="text-green-600">0</span>
+        );
+      }
     }
 
-    return value ?? "-";
+    // Fallback: Not editable, just display
+    if (!editable) {
+      if (typeof value === "object" && value !== null) {
+        return <pre className="text-xs text-gray-600">{JSON.stringify(value, null, 2)}</pre>; // or just display [object]
+      }
+      return value ?? "-";
+    }
+
+    // Editable field logic
+    return (
+      <div className="relative group">
+        {!isEditing ? (
+          <div className="flex items-center justify-between group">
+            <span className="truncate">
+              {typeof value === "object" && value !== null
+                ? <pre className="text-xs text-gray-600">{JSON.stringify(value, null, 2)}</pre>
+                : value ?? "-"}
+            </span>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => {
+                setEditingCell({ id: shipment._id, key });
+                setTempValue(value ?? "");
+              }}
+              title="Edit"
+            >
+              ✏️
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <input
+              value={tempValue}
+              onChange={(e) => setTempValue(e.target.value)}
+              className="border border-gray-300 px-2 py-1 rounded w-full"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <Button
+              size="sm"
+              onClick={() => {
+                handleEdit(shipment._id, key, tempValue);
+                setEditingCell(null);
+              }}
+              title="Confirm"
+            >
+              ✅
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setEditingCell(null)}
+              title="Cancel"
+            >
+              ❌
+            </Button>
+          </div>
+        )}
+      </div>
+    );
   };
+
+
 
   const totalValue = shipments.reduce((sum, s) => sum + (s.value || 0), 0);
   const delayed = shipments.filter((s) => s.status === "Delayed").length;
