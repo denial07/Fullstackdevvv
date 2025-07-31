@@ -31,12 +31,14 @@ const getStatusColor = (status: string) => {
 export default function IncomingShipmentsPage() {
   const [shipments, setShipments] = useState<any[]>([]);
   const [columns, setColumns] = useState<any[]>([]);
-  const [newColumn, setNewColumn] = useState("");
   const [draggedColIndex, setDraggedColIndex] = useState<number | null>(null);
   const [editingCell, setEditingCell] = useState<{ id: string, key: string } | null>(null);
   const [tempValue, setTempValue] = useState<string>("");
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
   const [editingColumnLabel, setEditingColumnLabel] = useState<string>("");
+  const [newColumn, setNewColumn] = useState("");
+  const [newColumnType, setNewColumnType] = useState("string");
+
 
 
 
@@ -155,7 +157,6 @@ export default function IncomingShipmentsPage() {
     }
   };
 
-
   const handleAddColumn = async () => {
     console.log("🔔 Add column triggered");
 
@@ -169,7 +170,7 @@ export default function IncomingShipmentsPage() {
       width: "w-32"
     };
 
-    // Optimistically update columns UI
+    // Optimistically update UI
     setColumns((prev) => [...prev, newCol]);
     setNewColumn("");
 
@@ -177,7 +178,10 @@ export default function IncomingShipmentsPage() {
       const res = await fetch("/api/shipments/add-column", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columnKey: newColKey }),
+        body: JSON.stringify({
+          columnKey: newColKey,
+          columnType: newColumnType // 👈 from dropdown
+        }),
       });
 
       const data = await res.json();
@@ -186,15 +190,13 @@ export default function IncomingShipmentsPage() {
         throw new Error(data.error || "Failed to add column");
       }
 
-      // Optional: parse default value from backend response (if added later)
-      // For now, we assume based on key — fallback for UI update only
-      const inferredDefault = inferLocalDefaultValue(newColKey); // helper function below
+      const defaultValue = getDefaultValueFromType(newColumnType); // 👈 local fallback
 
-      // Update local shipment state
+      // Add new property to each shipment
       setShipments((prev) =>
         prev.map((s) => ({
           ...s,
-          [newColKey]: s[newColKey] ?? inferredDefault,
+          [newColKey]: s[newColKey] ?? defaultValue,
         }))
       );
     } catch (error) {
@@ -202,6 +204,7 @@ export default function IncomingShipmentsPage() {
       alert("Error adding column: " + (error as Error).message);
     }
   };
+
 
 
 
@@ -415,10 +418,22 @@ export default function IncomingShipmentsPage() {
             onChange={(e) => setNewColumn(e.target.value)}
             className="w-64"
           />
-          <Button onClick={handleAddColumn}>
-            Add Column
-          </Button>
+
+          <select
+            value={newColumnType}
+            onChange={(e) => setNewColumnType(e.target.value)}
+            className="border rounded px-2 py-1 text-sm"
+          >
+            <option value="string">String</option>
+            <option value="number">Number</option>
+            <option value="boolean">Boolean</option>
+            <option value="date">Date</option>
+          </select>
+
+          <Button onClick={handleAddColumn}>Add Column</Button>
         </div>
+
+
 
 
         <Card>
@@ -501,5 +516,19 @@ function inferLocalDefaultValue(newColKey: string) {
   if (/delay/i.test(newColKey)) return 0;
   if (/tracking/i.test(newColKey)) return "";
   return "";
+}
+function getDefaultValueFromType(newColumnType: string) {
+  switch (newColumnType) {
+    case "string":
+      return "";
+    case "number":
+      return 0;
+    case "boolean":
+      return false;
+    case "date":
+      return new Date().toISOString().slice(0, 10); // e.g. "2024-06-09"
+    default:
+      return "";
+  }
 }
 

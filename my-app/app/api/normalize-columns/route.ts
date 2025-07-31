@@ -1,5 +1,7 @@
 // app/api/normalize-columns/route.ts
 import { NextRequest, NextResponse } from "next/server"
+import { connectToDatabase } from "@/lib/mongodb"
+import Shipment from "@/lib/models/Shipment"
 
 const GEMINI_API_URL =
     "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent"
@@ -12,22 +14,31 @@ function extractJsonBlock(raw: string): string {
 
 export async function POST(req: NextRequest) {
     try {
-        const { columns } = await req.json()
         const apiKey = process.env.GEMINI_API_KEY
-
-        if (!columns || !Array.isArray(columns) || !apiKey) {
+        if (!apiKey) {
             return NextResponse.json(
-                { error: "Missing column names or API key" },
+                { error: "Missing Gemini API key" },
                 { status: 400 }
             )
         }
 
-        // Prompt for Gemini
+        // 1. Fetch all shipments from the database
+        await connectToDatabase()
+        const shipments = await Shipment.find().lean()
+
+        if (!shipments || shipments.length === 0) {
+            return NextResponse.json(
+                { error: "No shipments found in database" },
+                { status: 404 }
+            )
+        }
+
+        // 2. Prompt for Gemini with all items
         const prompt = `
 You are a data analyst assistant.
 
-Given the following raw field names:
-${JSON.stringify(columns)}
+Given the following array of shipment objects:
+${JSON.stringify(shipments, null, 2)}
 
 Return a JSON object that semantically groups together fields that mean the same thing with high confidence (90%+). Each key should be a standardized label, and its value should be an array of original field names that represent the same concept.
 
@@ -42,8 +53,7 @@ Example:
 }
 `.trim();
 
-
-        // Send to Gemini
+        // 3. Send to Gemini
         const geminiRes = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
             method: "POST",
             headers: {
@@ -60,7 +70,7 @@ Example:
         })
 
         const data = await geminiRes.json()
-        console.log("Gemini raw response:", JSON.stringify(data, null, 2))
+        console.log("Gemini  raw response:", JSON.stringify(data, null, 2))
 
         const content = data?.candidates?.[0]?.content?.parts?.[0]?.text
 

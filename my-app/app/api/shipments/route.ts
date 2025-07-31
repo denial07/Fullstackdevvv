@@ -14,6 +14,51 @@ export async function GET() {
     }
 }
 
+export async function PATCH() {
+    try {
+        await connectToDatabase();
+
+        const shipments = await Shipment.find().lean();
+        const now = new Date();
+
+        const bulkUpdates = shipments.map((shipment) => {
+            const eta = shipment.eta ? new Date(shipment.eta) : null;
+            const deliveredDate = shipment.deliveredDate ? new Date(shipment.deliveredDate) : null;
+
+            let status = shipment.status;
+
+            if (deliveredDate) {
+                status = "delivered";
+            } else if (eta && eta < now) {
+                status = "delayed";
+            } else if (eta && eta >= now) {
+                status = "on time";
+            } else {
+                status = "pending";
+            }
+
+            return {
+                updateOne: {
+                    filter: { _id: shipment._id },
+                    update: { $set: { status } }
+                }
+            };
+        });
+
+        if (bulkUpdates.length > 0) {
+            await Shipment.bulkWrite(bulkUpdates);
+        }
+
+        return NextResponse.json({
+            message: `✅ Shipment statuses updated for ${bulkUpdates.length} documents.`,
+        });
+    } catch (error) {
+        console.error("❌ Error updating statuses:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}
+
+
 export async function PUT(req: Request) {
     try {
         const { oldKey, newKey } = await req.json();

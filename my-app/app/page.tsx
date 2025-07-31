@@ -247,6 +247,8 @@ type DashboardProps = {
 }
 
 
+
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardProps | null>(null)
   const [loading, setLoading] = useState(true)
@@ -254,8 +256,14 @@ export default function DashboardPage() {
   const [isChatOpen, setIsChatOpen] = useState(false)
 
 
+  
+
+
+
+
   useEffect(() => {
     fetchSummary()
+    
   }, [])
 
   const fetchSummary = async () => {

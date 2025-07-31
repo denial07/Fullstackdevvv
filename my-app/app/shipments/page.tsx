@@ -12,10 +12,15 @@ import { UserNav } from "@/components/user-nav"
 import { Edit } from "lucide-react"
 import IncomingShipmentCard from "@/components/IncomingShipmentCard";
 import OutgoingShipmentCard from "@/components/OutgoingShipmentCard";
+
 // app/shipments/page.tsx  (Server Component)
 
-
 export default async function ShipmentsPage() {
+  // ✅ Call status updater before normalization
+  await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/shipments/status`, {
+    method: "PATCH",
+  });
+
   // 1) Fetch your API route (which already serializes _id, dates, etc.)
   const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/shipments`, {
     next: { revalidate: 60 }, // or 'cache: "no-store"' if needed
