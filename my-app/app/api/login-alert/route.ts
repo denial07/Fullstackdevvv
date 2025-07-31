@@ -155,8 +155,37 @@ export async function POST(req: NextRequest) {
     const user = await User.findOne({ email });
     if (!user) {
       console.log(`⚠️ User not found for login alert: ${email}`);
+      // Send alert to admin instead
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASSWORD,
+          },
+        });
+        const adminEmail = process.env.EMAIL_USER || 'yeexian2007@gmail.com';
+        const mailOptions = {
+          from: `"Singapore Pallet Works Security" <${process.env.EMAIL_USER}>`,
+          to: adminEmail,
+          subject: '⚠️ Login Alert: Unknown User Access Attempt',
+          html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #dc2626;">Login Alert: Unknown User Access Attempt</h2>
+            <p>A login was attempted for a non-existent account:</p>
+            <p style="font-weight: bold; color: #2563eb;">${email}</p>
+            <p>IP Address: ${ipAddress}</p>
+            <p>User Agent: ${userAgent}</p>
+            <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+            <p style="font-size: 12px; color: #6b7280;">This is an automated message. Please do not reply to this email.</p>
+          </div>`
+        };
+        await transporter.sendMail(mailOptions);
+        console.log("📧 Admin notified of login alert for unknown user:", email);
+      } catch (adminEmailError) {
+        console.error("❌ Failed to notify admin of login alert:", adminEmailError);
+      }
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "User not found, admin notified" },
         { status: 404 }
       );
     }
