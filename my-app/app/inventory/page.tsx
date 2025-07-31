@@ -8,10 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import {
   Search,
   Download,
@@ -24,8 +27,6 @@ import {
   X,
   SlidersHorizontal,
   Edit3,
-  Check,
-  XCircle,
   Trash2,
   FileSpreadsheet,
 } from "lucide-react"
@@ -115,20 +116,26 @@ export default function InventoryPage() {
     maxCost: "",
   })
   const [showFilters, setShowFilters] = useState(false)
-  const [editingStock, setEditingStock] = useState<{ [key: string]: boolean }>({})
-  const [editingValues, setEditingValues] = useState<{ [key: string]: number }>({})
-  const [savingStock, setSavingStock] = useState<{ [key: string]: boolean }>({})
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; item: InventoryItem | null }>({
     open: false,
     item: null,
   })
   const [deletingItem, setDeletingItem] = useState<string | null>(null)
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false)
+  const [bulkEditData, setBulkEditData] = useState({
+    location: "",
+    quantity: "",
+    name: ""
+  })
+  const [selectedItems, setSelectedItems] = useState<string[]>([])
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false)
   const router = useRouter()
   // Add state for the import modal inside the InventoryPage component
   const [showImportModal, setShowImportModal] = useState(false)
 
   // Add column configuration and drag-and-drop state
   const defaultColumns = [
+    { key: "select", label: "", width: "w-12" },
     { key: "id", label: "Item ID", width: "w-24" },
     { key: "item", label: "Item Name", width: "w-40" },
     { key: "category", label: "Category", width: "w-28" },
@@ -223,10 +230,16 @@ export default function InventoryPage() {
   const renderCellContent = (item: InventoryItem, columnKey: string) => {
     const stockPercentage = (item.quantity / item.maxStock) * 100
     const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
-    const isEditing = editingStock[item.id]
-    const isSaving = savingStock[item.id]
 
     switch (columnKey) {
+      case "select":
+        return (
+          <Checkbox
+            checked={selectedItems.includes(item.id)}
+            onCheckedChange={() => handleSelectItem(item.id)}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )
       case "id":
         return <span className="font-medium">{item.id}</span>
       case "item":
@@ -235,73 +248,9 @@ export default function InventoryPage() {
         return item.category
       case "quantity":
         return (
-          <div className="edit-controls flex items-center space-x-2">
-            {isEditing ? (
-              <div className="flex items-center space-x-2">
-                <Input
-                  type="number"
-                  value={editingValues[item.id] || 0}
-                  onChange={(e) =>
-                    setEditingValues((prev) => ({
-                      ...prev,
-                      [item.id]: Number.parseInt(e.target.value) || 0,
-                    }))
-                  }
-                  className="w-20 h-8"
-                  min="0"
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <span className="text-sm text-gray-500">{item.unit}</span>
-                <div className="flex space-x-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 p-0"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      saveStockLevel(item.id, item.item)
-                    }}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="h-4 w-4 text-green-600" />
-                    )}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 p-0"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      cancelEditingStock(item.id)
-                    }}
-                    disabled={isSaving}
-                  >
-                    <XCircle className="h-4 w-4 text-red-600" />
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2">
-                <span>
-                  {item.quantity} {item.unit}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 hover:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    startEditingStock(item.id, item.quantity)
-                  }}
-                >
-                  <Edit3 className="h-4 w-4 text-blue-600" />
-                </Button>
-              </div>
-            )}
-          </div>
+          <span>
+            {item.quantity} {item.unit}
+          </span>
         )
       case "stockLevel":
         return (
@@ -428,82 +377,97 @@ export default function InventoryPage() {
     return Object.values(filters).filter((value) => value !== "").length + (searchTerm ? 1 : 0)
   }
 
-  const startEditingStock = (itemId: string, currentQuantity: number) => {
-    setEditingStock((prev) => ({ ...prev, [itemId]: true }))
-    setEditingValues((prev) => ({ ...prev, [itemId]: currentQuantity }))
+  // Bulk edit functions
+  const handleSelectAllItems = () => {
+    if (selectedItems.length === filteredInventory.length) {
+      setSelectedItems([])
+    } else {
+      setSelectedItems(filteredInventory.map(item => item.id))
+    }
   }
 
-  const cancelEditingStock = (itemId: string) => {
-    setEditingStock((prev) => ({ ...prev, [itemId]: false }))
-    setEditingValues((prev) => {
-      const newValues = { ...prev }
-      delete newValues[itemId]
-      return newValues
-    })
+  const handleSelectItem = (itemId: string) => {
+    setSelectedItems(prev => 
+      prev.includes(itemId) 
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    )
   }
 
-  const saveStockLevel = async (itemId: string, itemName: string) => {
-    const newQuantity = editingValues[itemId]
-
-    if (newQuantity === undefined || newQuantity < 0) {
-      toast.error("Invalid quantity", {
-        description: "Please enter a valid quantity (0 or greater)",
+  const handleBulkEdit = () => {
+    if (selectedItems.length === 0) {
+      toast.error("No items selected", {
+        description: "Please select items to edit",
       })
       return
     }
+    setShowBulkEditModal(true)
+  }
 
-    setSavingStock((prev) => ({ ...prev, [itemId]: true }))
+  const handleBulkUpdate = async () => {
+    if (selectedItems.length === 0) return
+
+    setIsBulkUpdating(true)
 
     try {
-      // Make API call to update the database
-      const response = await fetch(`/api/inventory/${itemId}`, {
-        method: "PATCH",
+      const updates: any = {}
+      if (bulkEditData.location.trim() && bulkEditData.location !== "KEEP_CURRENT") updates.location = bulkEditData.location.trim()
+      if (bulkEditData.name.trim()) updates.item = bulkEditData.name.trim()
+      if (bulkEditData.quantity.trim()) {
+        const quantity = parseInt(bulkEditData.quantity)
+        if (quantity >= 0) updates.quantity = quantity
+      }
+
+      if (Object.keys(updates).length === 0) {
+        toast.error("No changes specified", {
+          description: "Please enter at least one field to update",
+        })
+        return
+      }
+
+      const response = await fetch('/api/inventory/bulk-update', {
+        method: 'PATCH',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          quantity: newQuantity,
+          itemIds: selectedItems,
+          updates
         }),
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to update stock")
+        throw new Error(errorData.error || 'Failed to update items')
       }
 
-      const updatedItem = await response.json()
+      const result = await response.json()
 
-      // Update local state with the response from the database
-      setInventory((prev) =>
-        prev.map((item) =>
-          item.id === itemId
-            ? {
-                ...item,
-                quantity: updatedItem.quantity,
-                status: updatedItem.status,
-              }
-            : item,
-        ),
+      // Update local state
+      setInventory(prev => 
+        prev.map(item => 
+          selectedItems.includes(item.id) 
+            ? { ...item, ...updates }
+            : item
+        )
       )
 
-      // Exit edit mode
-      setEditingStock((prev) => ({ ...prev, [itemId]: false }))
-      setEditingValues((prev) => {
-        const newValues = { ...prev }
-        delete newValues[itemId]
-        return newValues
+      // Reset form and close modal
+      setBulkEditData({ location: "", quantity: "", name: "" })
+      setSelectedItems([])
+      setShowBulkEditModal(false)
+
+      toast.success("Bulk update completed! 📦", {
+        description: `Updated ${selectedItems.length} items successfully`,
       })
 
-      toast.success("Stock updated successfully! 📦", {
-        description: `${itemName} quantity updated to ${newQuantity} in database`,
-      })
     } catch (error: any) {
-      console.error("Error updating stock:", error)
-      toast.error("Failed to update stock", {
+      console.error("Error updating items:", error)
+      toast.error("Failed to update items", {
         description: error.message || "Please try again or contact support",
       })
     } finally {
-      setSavingStock((prev) => ({ ...prev, [itemId]: false }))
+      setIsBulkUpdating(false)
     }
   }
 
@@ -545,10 +509,10 @@ export default function InventoryPage() {
   }
 
   // Get unique values for filter dropdowns
-  const uniqueCategories = [...new Set(inventory.map((item) => item.category))].sort()
-  const uniqueStatuses = [...new Set(inventory.map((item) => item.status))].sort()
-  const uniqueLocations = [...new Set(inventory.map((item) => item.location))].sort()
-  const uniqueSuppliers = [...new Set(inventory.map((item) => item.supplier))].sort()
+  const uniqueCategories = [...new Set(inventory.map((item) => item.category).filter(Boolean))].sort()
+  const uniqueStatuses = [...new Set(inventory.map((item) => item.status).filter(Boolean))].sort()
+  const uniqueLocations = [...new Set(inventory.map((item) => item.location).filter(Boolean))].sort()
+  const uniqueSuppliers = [...new Set(inventory.map((item) => item.supplier).filter(Boolean))].sort()
 
   const filteredInventory = inventory.filter((item) => {
     // Search filter
@@ -680,6 +644,15 @@ export default function InventoryPage() {
               >
                 <FileSpreadsheet className="h-4 w-4 mr-2" />
                 Import Excel
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBulkEdit}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                <Edit3 className="h-4 w-4 mr-2" />
+                Bulk Edit ({selectedItems.length})
               </Button>
               <ExcelTemplateGenerator />
             </div>
@@ -1025,8 +998,7 @@ export default function InventoryPage() {
             <CardHeader>
               <CardTitle>All Inventory Items</CardTitle>
               <CardDescription>
-                Complete wood inventory with stock levels and expiry tracking (Click on any row to view details, or edit
-                stock levels inline)
+                Complete wood inventory with stock levels and expiry tracking (Click on any row to view details, or select multiple items for bulk editing)
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1047,6 +1019,17 @@ export default function InventoryPage() {
                       <Button variant="outline" size="sm" onClick={resetColumnOrder} className="text-xs bg-transparent">
                         Reset Order
                       </Button>
+                      {selectedItems.length > 0 && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleBulkEdit}
+                          className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                        >
+                          <Edit className="h-3 w-3 mr-1" />
+                          Bulk Edit ({selectedItems.length})
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -1056,24 +1039,31 @@ export default function InventoryPage() {
                         {columnOrder.map((column, index) => (
                           <TableHead
                             key={column.key}
-                            className={`${column.width} cursor-move select-none transition-colors ${
+                            className={`${column.width} ${column.key === 'select' ? 'cursor-default' : 'cursor-move'} select-none transition-colors ${
                               dragOverColumn === index ? "bg-blue-100 border-l-2 border-blue-500" : ""
                             } ${draggedColumn === index ? "opacity-50" : ""}`}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, index)}
-                            onDragEnd={handleDragEnd}
-                            onDragOver={(e) => handleDragOver(e, index)}
-                            onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, index)}
+                            draggable={column.key !== 'select'}
+                            onDragStart={column.key !== 'select' ? (e) => handleDragStart(e, index) : undefined}
+                            onDragEnd={column.key !== 'select' ? handleDragEnd : undefined}
+                            onDragOver={column.key !== 'select' ? (e) => handleDragOver(e, index) : undefined}
+                            onDragLeave={column.key !== 'select' ? handleDragLeave : undefined}
+                            onDrop={column.key !== 'select' ? (e) => handleDrop(e, index) : undefined}
                           >
-                            <div className="flex items-center space-x-2">
-                              <span>{column.label}</span>
-                              <div className="flex flex-col space-y-0.5 opacity-50">
-                                <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                                <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                                <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                            {column.key === 'select' ? (
+                              <Checkbox
+                                checked={selectedItems.length === filteredInventory.length && filteredInventory.length > 0}
+                                onCheckedChange={handleSelectAllItems}
+                              />
+                            ) : (
+                              <div className="flex items-center space-x-2">
+                                <span>{column.label}</span>
+                                <div className="flex flex-col space-y-0.5 opacity-50">
+                                  <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                                  <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                                  <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                                </div>
                               </div>
-                            </div>
+                            )}
                           </TableHead>
                         ))}
                       </TableRow>
@@ -1082,7 +1072,11 @@ export default function InventoryPage() {
                       {filteredInventory.map((item) => (
                         <TableRow
                           key={item._id}
-                          className="cursor-pointer hover:bg-gray-50 transition-colors group"
+                          className={`cursor-pointer transition-colors group ${
+                            selectedItems.includes(item.id) 
+                              ? "bg-blue-50 hover:bg-blue-100" 
+                              : "hover:bg-gray-50"
+                          }`}
                           onClick={(e) => handleRowClick(item.id, e)}
                         >
                           {columnOrder.map((column) => (
@@ -1205,6 +1199,91 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+
+      {/* Bulk Edit Modal */}
+      <Dialog open={showBulkEditModal} onOpenChange={setShowBulkEditModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bulk Edit Items</DialogTitle>
+            <DialogDescription>
+              Edit {selectedItems.length} selected item{selectedItems.length !== 1 ? 's' : ''}. Leave fields empty to keep current values.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="bulk-name">Item Name</Label>
+              <Input
+                id="bulk-name"
+                placeholder="Enter new name (optional)"
+                value={bulkEditData.name}
+                onChange={(e) => setBulkEditData(prev => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bulk-location">Location</Label>
+              <Select 
+                value={bulkEditData.location} 
+                onValueChange={(value) => setBulkEditData(prev => ({ ...prev, location: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select location (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="KEEP_CURRENT">Keep current location</SelectItem>
+                  {uniqueLocations.map((location) => (
+                    <SelectItem key={location} value={location}>
+                      {location}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bulk-quantity">Quantity</Label>
+              <Input
+                id="bulk-quantity"
+                type="number"
+                min="0"
+                placeholder="Enter new quantity (optional)"
+                value={bulkEditData.quantity}
+                onChange={(e) => setBulkEditData(prev => ({ ...prev, quantity: e.target.value }))}
+              />
+            </div>
+
+            <div className="flex space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowBulkEditModal(false)}
+                disabled={isBulkUpdating}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleBulkUpdate}
+                disabled={isBulkUpdating}
+                className="flex-1"
+              >
+                {isBulkUpdating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Edit3 className="h-4 w-4 mr-2" />
+                    Update Items
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Excel Import Modal */}
       <ExcelImportModal
         isOpen={showImportModal}
