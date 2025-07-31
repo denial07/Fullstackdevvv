@@ -111,7 +111,7 @@ export function UserNav() {
             </DropdownMenuItem>
           )}
           <DropdownMenuItem asChild>
-            <Link href="/faq" className="flex items-center">
+            <Link href="/FAQ" className="flex items-center">
               <HelpCircle className="mr-2 h-4 w-4" />
               <span>Help & FAQ</span>
             </Link>
