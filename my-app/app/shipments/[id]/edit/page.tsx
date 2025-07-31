@@ -30,22 +30,32 @@ interface ShipmentData {
     id: string
     type: "incoming" | "outgoing"
     status: string
-    shipmentId: string
+    shipmentId?: string // Legacy field
     vendor?: string
     customer?: string
-    trackingNumber: string
+    trackingNumber?: string
     vessel?: string
     driver?: string
     vehicle?: string
     port?: string
     address?: string
-    priority: string
-    notes: string
-    shippingDate: Date
-    expectedDate: Date
-    items: ShipmentItem[]
+    priority?: string
+    notes?: string
+    description?: string
+    price?: number
+    shippingDate?: Date
+    expectedDate?: Date
+    eta?: Date
+    items?: ShipmentItem[]
     createdAt: Date
     updatedAt: Date
+    emailMetadata?: {
+        trackingNumber?: string
+        items?: Array<{ name: string; quantity?: number; description?: string; price?: number }>
+        extractedPrice?: number
+        carrier?: string
+        notes?: string
+    }
 }
 
 export default function EditShipmentPage() {
@@ -57,7 +67,15 @@ export default function EditShipmentPage() {
     const [shipmentData, setShipmentData] = useState<ShipmentData | null>(null)
     const [shippingDate, setShippingDate] = useState<Date>()
     const [expectedDate, setExpectedDate] = useState<Date>()
-    const [items, setItems] = useState<ShipmentItem[]>([])
+    const [items, setItems] = useState<ShipmentItem[]>([
+        {
+            id: "initial-item",
+            description: "",
+            quantity: 0,
+            unit: "units",
+            unitPrice: 0,
+        }
+    ])
 
     const [formData, setFormData] = useState({
         shipmentId: "",
@@ -85,36 +103,81 @@ export default function EditShipmentPage() {
 
                 const data = await res.json()
                 console.log("✅ Fetched shipment data:", data)
+                console.log("📦 Direct items field:", data.items)
+                console.log("📧 Email metadata items:", data.emailMetadata?.items)
+                console.log("💰 Price field:", data.price)
+                console.log("📝 Description field:", data.description)
 
                 setShipmentData(data)
 
                 // Defensive check in case dates are invalid or missing
                 setShippingDate(data.shippingDate ? new Date(data.shippingDate) : undefined)
-                // FIX: Use data.expectedDate if available, else fallback to data.arrival
+                // Handle expected date - check multiple possible fields
                 setExpectedDate(
                     data.expectedDate
                         ? new Date(data.expectedDate)
-                        : data.arrival
-                            ? new Date(data.arrival)
-                            : undefined
+                        : data.eta
+                            ? new Date(data.eta)
+                            : data.arrival
+                                ? new Date(data.arrival)
+                                : undefined
                 )
 
                 setFormData({
-                    shipmentId: data.shipmentId,
+                    shipmentId: data.id || data.shipmentId, // Use 'id' field from MongoDB, fallback to shipmentId
                     type: data.type,
                     vendor: data.vendor || "",
                     customer: data.customer || "",
-                    trackingNumber: data.trackingNumber || "",
+                    trackingNumber: data.emailMetadata?.trackingNumber || data.trackingNumber || "",
                     vessel: data.vessel || "",
                     driver: data.driver || "",
                     vehicle: data.vehicle || "",
                     port: data.port || "",
                     address: data.address || "",
                     priority: data.priority || "Standard",
-                    notes: data.notes || "",
+                    notes: data.notes || data.description || "",
                 })
 
-                setItems(data.items || [])
+                // Handle items - check if they're in emailMetadata or directly on the document
+                const itemsData = data.emailMetadata?.items || data.items || []
+                console.log("📦 Items data from database:", itemsData)
+                console.log("📧 Email metadata:", data.emailMetadata)
+                console.log("💰 Price from database:", data.price)
+                
+                let mappedItems = itemsData.map((item: any, index: number) => ({
+                    id: item.id || `item-${index}`,
+                    description: item.name || item.description || "",
+                    quantity: item.quantity || 0,
+                    unit: item.unit || "units",
+                    unitPrice: item.price || item.unitPrice || 0,
+                }))
+
+                // If no items but we have a price, create a default item to represent the shipment value
+                if (mappedItems.length === 0 && data.price && data.price > 0) {
+                    console.log("🔧 No items found but price exists, creating default item for price:", data.price)
+                    mappedItems = [{
+                        id: "default-item",
+                        description: data.description || "Shipment value",
+                        quantity: 1,
+                        unit: "shipment",
+                        unitPrice: data.price,
+                    }]
+                }
+                
+                // If still no items, ensure there's at least one empty item for editing
+                if (mappedItems.length === 0) {
+                    console.log("🔧 No items at all, creating empty item for editing")
+                    mappedItems = [{
+                        id: "empty-item",
+                        description: "",
+                        quantity: 0,
+                        unit: "units",
+                        unitPrice: 0,
+                    }]
+                }
+                
+                console.log("📋 Final mapped items:", mappedItems)
+                setItems(mappedItems)
             } catch (err) {
                 console.error("❌ Failed to fetch shipment:", err)
                 setShipmentData(null)
@@ -149,7 +212,16 @@ export default function EditShipmentPage() {
     }
 
     const calculateTotal = () => {
-        return items.reduce((total, item) => total + item.quantity * item.unitPrice, 0)
+        const itemsTotal = items.reduce((total, item) => total + item.quantity * item.unitPrice, 0)
+        // If we have a price from the database and no items, use that price
+        if (itemsTotal === 0 && shipmentData?.price) {
+            return shipmentData.price
+        }
+        // If we have an extracted price from email analysis, use that as fallback
+        if (itemsTotal === 0 && shipmentData?.emailMetadata?.extractedPrice) {
+            return shipmentData.emailMetadata.extractedPrice
+        }
+        return itemsTotal
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -295,7 +367,7 @@ export default function EditShipmentPage() {
                                         {shipmentData.status}
                                     </Badge>
                                 </div>
-                                <p className="text-gray-600">Modify shipment details for {shipmentData.shipmentId}</p>
+                                <p className="text-gray-600">Modify shipment details for {shipmentData.id || shipmentData.shipmentId}</p>
                             </div>
                         </div>
                         <UserNav />
