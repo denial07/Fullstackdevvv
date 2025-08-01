@@ -24,6 +24,8 @@ interface PasswordGeneratorProps {
   className?: string
 }
 
+type ObfuscationLevel = 'medium' | 'strong'
+
 export function PasswordGenerator({ onPasswordSelect, className }: PasswordGeneratorProps) {
   const [prompt, setPrompt] = useState('')
   const [generatedPasswords, setGeneratedPasswords] = useState<string[]>([])
@@ -32,6 +34,8 @@ export function PasswordGenerator({ onPasswordSelect, className }: PasswordGener
   const [isGenerating, setIsGenerating] = useState(false)
   const [copiedPassword, setCopiedPassword] = useState('')
   const [showGenerator, setShowGenerator] = useState(false)
+  const [obfuscationLevel, setObfuscationLevel] = useState<ObfuscationLevel>('medium')
+  const [extractedKeywords, setExtractedKeywords] = useState<string[]>([])
 
   const examplePrompts = [
     "I love anime, coffee, and Paris",
@@ -49,56 +53,171 @@ export function PasswordGenerator({ onPasswordSelect, className }: PasswordGener
     // Simulate AI processing time for better UX
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Always use a password options object with length >= 12
-    const passwordOptions = {
-      length: 12,
-      includeLowercase: true,
-      includeUppercase: true,
-      includeNumbers: true,
-      includeSymbols: true,
-      excludeSimilar: false,
-      excludeAmbiguous: false,
-    };
-
-    // Custom password generator: replace letters with symbols, mix in numbers/symbols, no full words
-    function leetTransform(str: string): string {
-      return str
-        .replace(/a/gi, '@')
-        .replace(/s/gi, '$')
-        .replace(/i/gi, '!')
-        .replace(/o/gi, '0')
-        .replace(/e/gi, '3')
-        .replace(/l/gi, '1');
+    // Extract keywords using AI-like logic
+    function extractKeywords(prompt: string): string[] {
+      const stopwords = new Set([
+        'i', 'the', 'and', 'a', 'my', 'to', 'is', 'in', 'of', 'on', 'for', 
+        'who', 'with', 'love', 'enjoys', 'am', 'are', 'have', 'has', 'like', 
+        'likes', 'will', 'would', 'can', 'could', 'should', 'that', 'this',
+        'from', 'at', 'by', 'it', 'an', 'as', 'be', 'or', 'but', 'not'
+      ]);
+      
+      const keywords = prompt
+        .toLowerCase()
+        .split(/\W+/)
+        .filter(word => word.length > 2 && !stopwords.has(word))
+        .slice(0, 8); // Limit to 8 keywords for UI
+      
+      return keywords;
     }
 
-    function generateLeetPassword() {
-      // Extract words from prompt
-      const words = prompt.split(/\W+/).filter(word => word.length > 2);
-      let fragment = '';
-      if (words.length > 0) {
-        // Use a random word, leet transform, and take up to 6 chars
-        const word = words[Math.floor(Math.random() * words.length)];
-        fragment = leetTransform(word).slice(0, 6);
-      }
-      // Pad with random numbers/symbols to reach 12 chars
-      let password = fragment;
+    // Enhanced symbol mapping with better visual similarity
+    const symbolMap: { [key: string]: [string, string] } = {
+      'a': ['a', '^'],
+      'b': ['b', '8'],
+      'c': ['c', '('],
+      'd': ['d', ')'],
+      'e': ['e', '3'],
+      'f': ['f', '='],
+      'g': ['g', '6'],
+      'h': ['h', '#'],
+      'i': ['i', '!'],
+      'j': ['j', ';'],
+      'k': ['k', '<'],
+      'l': ['l', '1'],
+      'm': ['m', '^^'],
+      'n': ['n', '/\\/'],
+      'o': ['o', '0'],
+      'p': ['p', '°'],
+      'q': ['q', '0,'],
+      'r': ['r', '2'],
+      's': ['s', '$'],
+      't': ['t', '+'],
+      'u': ['u', '_'],
+      'v': ['v', '\\/'],
+      'w': ['w', 'VV'],
+      'x': ['x', '*'],
+      'y': ['y', '¥'],
+      'z': ['z', '2']
+    };
+
+    // Transform word based on obfuscation level
+    function leetTransform(word: string, level: ObfuscationLevel): string {
+      if (word.length === 0) return word;
+      
+      const chars = word.split('');
+      const transformedChars = chars.map((char) => {
+        const lowerChar = char.toLowerCase();
+        const options = symbolMap[lowerChar];
+        if (!options) return char; // Keep non-alphabetic characters
+        
+        const firstOption = options[0]; // letter
+        const secondOption = options[1]; // symbol
+        
+        let transformed;
+        switch (level) {
+          case 'medium':
+            // 50/50 letter vs symbol for medium
+            transformed = Math.random() < 0.5 ? firstOption : secondOption;
+            break;
+          case 'strong':
+            // Mostly symbols for strong (80% symbols)
+            transformed = Math.random() < 0.2 ? firstOption : secondOption;
+            break;
+          default:
+            transformed = firstOption;
+        }
+        
+        return transformed;
+      });
+      
+      return transformedChars.join('');
+    }
+
+    // Generate password with new logic
+    function generatePassword(prompt: string, level: ObfuscationLevel): string {
+      const keywords = extractKeywords(prompt);
+      
+      // Choose keywords based on level
+      const keywordCount = level === 'strong' ? 2 : 1;
+      const chosenWords = keywords.length > 0 
+        ? keywords.slice(0, Math.min(keywordCount, keywords.length))
+        : (level === 'strong' ? ['secure', 'pass'] : ['secure']); // fallback if no keywords
+      
+      // Apply substitution based on level
+      const transformed = chosenWords.map(word => leetTransform(word, level)).join('');
+      
+      // Add mandatory characters (1 each of uppercase, lowercase, digit, symbol)
+      const mandatoryChars = [
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)], // uppercase
+        'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)], // lowercase
+        '0123456789'[Math.floor(Math.random() * 10)], // digit
+        '!@#$%^&*'[Math.floor(Math.random() * 8)] // symbol
+      ];
+      
+      // Random padding based on level
+      const padLength = level === 'strong' 
+        ? Math.floor(Math.random() * 3) + 6 // 6-8 random characters
+        : Math.floor(Math.random() * 3) + 3; // 3-5 random characters
+      
       const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-      while (password.length < 12) {
-        password += charset[Math.floor(Math.random() * charset.length)];
+      let padding = '';
+      for (let i = 0; i < padLength; i++) {
+        padding += charset[Math.floor(Math.random() * charset.length)];
       }
-      // Shuffle password
-      password = SmartPasswordGenerator['shuffleString'](password);
-      // Ensure no full word from prompt is present
-      const lowerPassword = password.toLowerCase();
-      if (!words.some(word => word && lowerPassword.includes(word.toLowerCase()))) {
-        return password;
+      
+      // Combine all parts
+      let password = transformed + mandatoryChars.join('') + padding;
+      
+      // Ensure minimum length for strong mode
+      if (level === 'strong') {
+        while (password.length < 14) {
+          password += charset[Math.floor(Math.random() * charset.length)];
+        }
       }
-      // If a word slipped in, fallback to random
-      return SmartPasswordGenerator.generatePassword(passwordOptions);
+      
+      // Shuffle final password for better entropy and to avoid patterns
+      password = password.split('').sort(() => Math.random() - 0.5).join('');
+      
+      return password;
+    }
+
+    // Validate password meets strength requirements
+    function validatePassword(password: string, level: ObfuscationLevel): boolean {
+      const strength = SmartPasswordGenerator.evaluateStrength(password);
+      
+      if (level === 'medium') {
+        // Accept "Good" and above (score >= 3)
+        return strength.score >= 3;
+      } else {
+        // Strong mode: must be "Very Strong" (score >= 4) and at least 14 characters
+        return strength.score >= 4 && password.length >= 14;
+      }
     }
 
     try {
-      const variations = Array.from({ length: 3 }, generateLeetPassword);
+      // Extract and set keywords for display
+      const keywords = extractKeywords(prompt);
+      setExtractedKeywords(keywords);
+
+      // Generate multiple password variations with new logic
+      const variations: string[] = [];
+      let attempts = 0;
+      const maxAttempts = 50; // Generous attempt limit
+      
+      while (variations.length < 3 && attempts < maxAttempts) {
+        const candidate = generatePassword(prompt, obfuscationLevel);
+        
+        // Validate strength
+        if (validatePassword(candidate, obfuscationLevel)) {
+          // Avoid duplicates
+          if (!variations.includes(candidate)) {
+            variations.push(candidate);
+          }
+        }
+        attempts++;
+      }
+
       setGeneratedPasswords(variations);
 
       // Auto-select first password and evaluate it
@@ -107,10 +226,24 @@ export function PasswordGenerator({ onPasswordSelect, className }: PasswordGener
       }
     } catch (error) {
       console.error('Password generation error:', error);
-      // Fallback to basic generation
-      const fallback = SmartPasswordGenerator.generatePassword(passwordOptions);
-      setGeneratedPasswords([fallback]);
-      handlePasswordSelect(fallback);
+      // Fallback to basic generation only for medium mode
+      // For strong mode, we don't provide fallback if we can't generate very strong passwords
+      if (obfuscationLevel === 'medium') {
+        const fallback = SmartPasswordGenerator.generatePassword({
+          length: 12,
+          includeLowercase: true,
+          includeUppercase: true,
+          includeNumbers: true,
+          includeSymbols: true,
+          excludeSimilar: false,
+          excludeAmbiguous: false,
+        });
+        setGeneratedPasswords([fallback]);
+        handlePasswordSelect(fallback);
+      } else {
+        // For strong mode, show empty results if we can't generate very strong passwords
+        setGeneratedPasswords([]);
+      }
     }
 
     setIsGenerating(false);
@@ -168,7 +301,7 @@ export function PasswordGenerator({ onPasswordSelect, className }: PasswordGener
           <Sparkles className="h-4 w-4 text-yellow-500" />
         </CardTitle>
         <CardDescription>
-          Describe yourself in natural language and get personalized secure passwords
+          Describe yourself in natural language and get personalized secure passwords. Medium: Good-Very Strong, Strong: Always Very Strong (≥14 chars).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -199,6 +332,55 @@ export function PasswordGenerator({ onPasswordSelect, className }: PasswordGener
             </div>
           </div>
         </div>
+
+        {/* Obfuscation Level Control */}
+        <div className="space-y-2">
+          <Label>Password Style</Label>
+          <div className="flex gap-2">
+            {(['medium', 'strong'] as ObfuscationLevel[]).map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setObfuscationLevel(level)}
+                className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  obfuscationLevel === level
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                }`}
+              >
+                {level.charAt(0).toUpperCase() + level.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="text-xs text-gray-500">
+            {obfuscationLevel === 'medium' && '1 keyword + mandatory chars + 3-5 random chars (Good to Very Strong)'}
+            {obfuscationLevel === 'strong' && '2 keywords + mandatory chars + 6-8 random chars, ≥14 chars (Always Very Strong)'}
+          </div>
+        </div>
+
+        {/* Extracted Keywords Display */}
+        {extractedKeywords.length > 0 && (
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Brain className="h-4 w-4 text-blue-500" />
+              AI Detected Keywords
+            </Label>
+            <div className="flex flex-wrap gap-1">
+              {extractedKeywords.map((keyword, index) => (
+                <Badge
+                  key={index}
+                  variant="secondary"
+                  className="bg-blue-100 text-blue-800 border-blue-200"
+                >
+                  {keyword}
+                </Badge>
+              ))}
+            </div>
+            <div className="text-xs text-gray-500">
+              These keywords from your input will be used to create memorable passwords
+            </div>
+          </div>
+        )}
 
         {/* Generate Button */}
         <Button 
@@ -258,6 +440,17 @@ export function PasswordGenerator({ onPasswordSelect, className }: PasswordGener
           </div>
         )}
 
+        {/* No Strong Passwords Message */}
+        {generatedPasswords.length === 0 && obfuscationLevel === 'strong' && !isGenerating && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>No Very Strong passwords could be generated</strong> from your input with the current settings. 
+              Try using a longer description with more varied words, or switch to Medium style for more options.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Password Strength Analysis */}
         {passwordStrength && selectedPassword && (
           <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
@@ -314,9 +507,9 @@ export function PasswordGenerator({ onPasswordSelect, className }: PasswordGener
         <Alert>
           <Sparkles className="h-4 w-4" />
           <AlertDescription className="text-sm">
-            <strong>How it works:</strong> Our AI analyzes your interests and creates 
-            memorable yet secure passwords. Each password combines your keywords with 
-            symbols, numbers, and smart substitutions for maximum security.
+            <strong>How it works:</strong> Extracts keywords from your description, applies leet transformations, 
+            adds mandatory character types (uppercase, lowercase, digit, symbol), and pads with random characters. 
+            Medium: 1 keyword + 3-5 padding, Strong: 2 keywords + 6-8 padding. All shuffled for security!
           </AlertDescription>
         </Alert>
       </CardContent>
