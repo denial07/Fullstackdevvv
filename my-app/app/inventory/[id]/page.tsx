@@ -162,6 +162,31 @@ const calculateSuggestedOrder = (currentStock: number, minStock: number, maxStoc
   return Math.ceil(maxStock * 0.3)
 }
 
+const calculateActualStatus = (quantity: number, minStock: number, maxStock: number, expiryDate: string): string => {
+  const today = new Date()
+  const expiry = new Date(expiryDate)
+  const daysUntilExpiry = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+  // Check expiry status first (highest priority)
+  if (daysUntilExpiry < 0) {
+    return "Expired"
+  } else if (daysUntilExpiry <= 30) {
+    return "Expiring Soon"
+  }
+
+  // Then check stock levels with improved logic
+  // Consider it low stock if:
+  // 1. At or below minimum stock threshold, OR
+  // 2. Below 25% of maximum capacity (indicating need to reorder soon)
+  const stockPercentage = (quantity / maxStock) * 100
+  
+  if (quantity <= minStock || stockPercentage < 25) {
+    return "Low Stock"
+  }
+
+  return "Good"
+}
+
 export default function MaterialDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const [material, setMaterial] = useState<InventoryItem | null>(null)
   const [loading, setLoading] = useState(true)
@@ -206,7 +231,13 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
       }
 
       const data = await response.json()
-      setMaterial(data)
+      
+      // Calculate the actual status based on current date and stock levels
+      const actualStatus = calculateActualStatus(data.quantity, data.minStock, data.maxStock, data.expiryDate)
+      
+      // Update the material with the correct status
+      const updatedMaterial = { ...data, status: actualStatus }
+      setMaterial(updatedMaterial)
       console.log("✅ Successfully loaded material data")
     } catch (err: any) {
       console.error("❌ Error fetching material:", err)
