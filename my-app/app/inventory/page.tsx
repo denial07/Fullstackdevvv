@@ -406,9 +406,7 @@ export default function InventoryPage() {
 
   const handleBulkUpdate = async () => {
     if (selectedItems.length === 0) return
-
     setIsBulkUpdating(true)
-
     try {
       const updates: any = {}
       if (bulkEditData.location.trim() && bulkEditData.location !== "KEEP_CURRENT") updates.location = bulkEditData.location.trim()
@@ -644,15 +642,6 @@ export default function InventoryPage() {
               >
                 <FileSpreadsheet className="h-4 w-4 mr-2" />
                 Import Excel
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleBulkEdit}
-                className="bg-blue-600 text-white hover:bg-blue-700"
-              >
-                <Edit3 className="h-4 w-4 mr-2" />
-                Bulk Edit ({selectedItems.length})
               </Button>
               <ExcelTemplateGenerator />
             </div>
@@ -1019,14 +1008,16 @@ export default function InventoryPage() {
                       <Button variant="outline" size="sm" onClick={resetColumnOrder} className="text-xs bg-transparent">
                         Reset Order
                       </Button>
+                    </div>
+                    <div>
                       {selectedItems.length > 0 && (
                         <Button 
                           variant="outline" 
                           size="sm" 
                           onClick={handleBulkEdit}
-                          className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                          className="text-xs bg-blue-600 text-white hover:bg-blue-700"
                         >
-                          <Edit className="h-3 w-3 mr-1" />
+                          <Edit3 className="h-4 w-4 mr-1" />
                           Bulk Edit ({selectedItems.length})
                         </Button>
                       )}
