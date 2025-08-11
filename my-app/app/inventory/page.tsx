@@ -29,6 +29,10 @@ import {
   Edit3,
   Trash2,
   FileSpreadsheet,
+  CheckCircle,
+  AlertCircle,
+  XCircle,
+  TrendingDown as TrendingDownIcon,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
@@ -92,6 +96,78 @@ const getStatusIcon = (status: string) => {
   }
 }
 
+// Enhanced status functions for better visual representation
+const getEnhancedStatusBadge = (item: InventoryItem) => {
+  const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+  const stockPercentage = (item.quantity / item.maxStock) * 100
+  
+  const isLowStock = stockPercentage < 20
+  const isExpiringSoon = daysToExpiry < 30 && daysToExpiry >= 0
+  const isExpired = daysToExpiry < 0
+  
+  let statuses = []
+  
+  // Priority order: Expired > Expiring Soon > Low Stock > Good
+  if (isExpired) {
+    statuses.push({ 
+      text: "Expired", 
+      icon: "⛔", 
+      color: "bg-red-100 text-red-800 border-red-200",
+      priority: 1 
+    })
+  } else if (isExpiringSoon) {
+    statuses.push({ 
+      text: "Expiring Soon", 
+      icon: "⚠️", 
+      color: "bg-orange-100 text-orange-800 border-orange-200",
+      priority: 2 
+    })
+  }
+  
+  if (isLowStock) {
+    statuses.push({ 
+      text: "Low Stock", 
+      icon: "📉", 
+      color: "bg-blue-100 text-blue-800 border-blue-200",
+      priority: 3 
+    })
+  }
+  
+  if (statuses.length === 0) {
+    statuses.push({ 
+      text: "Good", 
+      icon: "✅", 
+      color: "bg-green-100 text-green-800 border-green-200",
+      priority: 4 
+    })
+  }
+  
+  // If multiple statuses, combine them
+  if (statuses.length > 1) {
+    const combinedText = statuses.map(s => s.text).join(" | ")
+    const primaryStatus = statuses[0] // Use the highest priority color
+    return {
+      text: combinedText,
+      icon: statuses[0].icon,
+      color: primaryStatus.color
+    }
+  }
+  
+  return statuses[0]
+}
+
+const getStockLevelColor = (percentage: number) => {
+  if (percentage < 20) return "bg-red-500"
+  if (percentage < 50) return "bg-yellow-500"
+  return "bg-green-500"
+}
+
+const getExpiryProgressColor = (daysToExpiry: number) => {
+  if (daysToExpiry < 0 || daysToExpiry < 30) return "bg-red-500"
+  if (daysToExpiry < 90) return "bg-yellow-500"
+  return "bg-green-500"
+}
+
 const getDaysUntilExpiry = (expiryDate: string) => {
   const today = new Date()
   const expiry = new Date(expiryDate)
@@ -141,14 +217,14 @@ export default function InventoryPage() {
     { key: "id", label: "Item ID", width: "w-24" },
     { key: "item", label: "Item Name", width: "w-40" },
     { key: "category", label: "Category", width: "w-28" },
-    { key: "quantity", label: "Quantity", width: "w-32" },
-    { key: "stockLevel", label: "Stock Level", width: "w-32" },
+    { key: "quantity", label: "Quantity (m³)", width: "w-32" },
+    { key: "stockLevel", label: "Stock Level (m³)", width: "w-32" },
     { key: "location", label: "Location", width: "w-32" },
     { key: "receivedDate", label: "Received Date", width: "w-28" },
     { key: "expiryDate", label: "Expiry Date", width: "w-28" },
-    { key: "daysToExpiry", label: "Days to Expiry", width: "w-32" },
-    { key: "status", label: "Status", width: "w-28" },
-    { key: "value", label: "Value (S$)", width: "w-24" },
+    { key: "daysToExpiry", label: "Days to Expiry", width: "w-36" },
+    { key: "status", label: "Status", width: "w-40" },
+    { key: "value", label: "Value (S$)", width: "w-28 text-right" },
     { key: "actions", label: "Actions", width: "w-20" },
   ]
 
@@ -255,16 +331,26 @@ export default function InventoryPage() {
         return item.category
       case "quantity":
         return (
-          <span>
-            {item.quantity} {item.unit}
+          <span className="font-medium">
+            {item.quantity.toLocaleString()}
           </span>
         )
       case "stockLevel":
         return (
-          <div className="space-y-1">
-            <Progress value={stockPercentage} className="h-2" />
-            <div className="text-xs text-gray-500">
-              {item.quantity}/{item.maxStock} {item.unit}
+          <div className="space-y-2">
+            <div className="w-full bg-gray-200 rounded-full h-3 relative overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all duration-300 ${getStockLevelColor(stockPercentage)}`}
+                style={{ width: `${Math.min(stockPercentage, 100)}%` }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-xs font-medium text-gray-700">
+                  {stockPercentage.toFixed(0)}%
+                </span>
+              </div>
+            </div>
+            <div className="text-xs text-gray-600 text-center">
+              {item.quantity.toLocaleString()}/{item.maxStock.toLocaleString()}
             </div>
           </div>
         )
@@ -275,28 +361,49 @@ export default function InventoryPage() {
       case "expiryDate":
         return item.expiryDate
       case "daysToExpiry":
+        const maxDays = 365 // Assume max reasonable expiry is 1 year for progress calculation
+        const progressPercentage = daysToExpiry < 0 ? 0 : Math.min((daysToExpiry / maxDays) * 100, 100)
+        
         return (
-          <span
-            className={
-              daysToExpiry < 0
-                ? "text-red-600 font-medium"
-                : daysToExpiry < 30
-                  ? "text-orange-600 font-medium"
-                  : "text-green-600"
-            }
-          >
-            {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)} days overdue` : `${daysToExpiry} days`}
-          </span>
+          <div className="space-y-2">
+            <div className="w-full bg-gray-200 rounded-full h-2 relative overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all duration-300 ${getExpiryProgressColor(daysToExpiry)}`}
+                style={{ width: `${progressPercentage}%` }}
+              />
+            </div>
+            <div className={`text-xs text-center font-medium ${
+              daysToExpiry < 0 
+                ? "text-red-600" 
+                : daysToExpiry < 30 
+                  ? "text-orange-600" 
+                  : daysToExpiry < 90
+                    ? "text-yellow-600"
+                    : "text-green-600"
+            }`}>
+              {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)}d overdue` : `${daysToExpiry}d left`}
+            </div>
+          </div>
         )
       case "status":
+        const statusBadge = getEnhancedStatusBadge(item)
         return (
-          <div className="flex items-center space-x-2">
-            {getStatusIcon(item.status)}
-            <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
+          <div className="flex items-center justify-center">
+            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${statusBadge.color}`}>
+              <span>{statusBadge.icon}</span>
+              {statusBadge.text}
+            </span>
           </div>
         )
       case "value":
-        return (item.quantity * item.costPerUnit).toLocaleString()
+        return (
+          <span className="font-medium">
+            {(item.quantity * item.costPerUnit).toLocaleString('en-US', {
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0
+            })}
+          </span>
+        )
       case "actions":
         return (
           <div className="edit-controls flex items-center space-x-2">
@@ -598,12 +705,26 @@ export default function InventoryPage() {
     return result
   }, [inventory, debouncedSearchTerm, filters])
 
-  // Memoize expensive calculations
+  // Memoize expensive calculations with enhanced status logic
   const { totalItems, lowStockItems, expiringSoonItems, expiredItems, totalValue } = useMemo(() => {
     const totalItems = inventory.length
-    const lowStockItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "low stock").length
-    const expiringSoonItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "expiring soon").length
-    const expiredItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "expired").length
+    
+    // Use enhanced logic for better counting
+    const lowStockItems = inventory.filter(item => {
+      const stockPercentage = (item.quantity / item.maxStock) * 100
+      return stockPercentage < 20
+    }).length
+    
+    const expiringSoonItems = inventory.filter(item => {
+      const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+      return daysToExpiry < 30 && daysToExpiry >= 0
+    }).length
+    
+    const expiredItems = inventory.filter(item => {
+      const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+      return daysToExpiry < 0
+    }).length
+    
     const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.costPerUnit, 0)
     
     return { totalItems, lowStockItems, expiringSoonItems, expiredItems, totalValue }
@@ -785,29 +906,43 @@ export default function InventoryPage() {
             <CardContent>
               <div className="space-y-3">
                 {inventory
-                  .filter(
-                    (item) =>
-                      item.status?.trim().toLowerCase() === "expired" ||
-                      item.status?.trim().toLowerCase() === "expiring soon",
-                  )
-                  .map((item) => (
-                    <div
-                      key={item._id}
-                      className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg cursor-pointer hover:bg-red-100 transition-colors"
-                      onClick={(e) => handleRowClick(item.id, e)}
-                    >
-                      <div className="flex items-center space-x-3">
-                        {getStatusIcon(item.status)}
-                        <div>
-                          <p className="font-medium">{item.item}</p>
-                          <p className="text-sm text-gray-600">
-                            {item.quantity} {item.unit} - Expires: {item.expiryDate}
-                          </p>
+                  .filter(item => {
+                    const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+                    const stockPercentage = (item.quantity / item.maxStock) * 100
+                    return daysToExpiry < 30 || stockPercentage < 20
+                  })
+                  .map((item) => {
+                    const statusBadge = getEnhancedStatusBadge(item)
+                    const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+                    
+                    return (
+                      <div
+                        key={item._id}
+                        className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${
+                          daysToExpiry < 0 
+                            ? 'bg-red-50 border-red-200 hover:bg-red-100'
+                            : daysToExpiry < 30 
+                              ? 'bg-orange-50 border-orange-200 hover:bg-orange-100'
+                              : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+                        }`}
+                        onClick={(e) => handleRowClick(item.id, e)}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <span className="text-lg">{statusBadge.icon}</span>
+                          <div>
+                            <p className="font-medium">{item.item}</p>
+                            <p className="text-sm text-gray-600">
+                              {item.quantity.toLocaleString()} m³ - Expires: {item.expiryDate}
+                            </p>
+                          </div>
                         </div>
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${statusBadge.color}`}>
+                          <span>{statusBadge.icon}</span>
+                          {statusBadge.text}
+                        </span>
                       </div>
-                      <Badge variant={getStatusColor(item.status)}>{item.status}</Badge>
-                    </div>
-                  ))}
+                    )
+                  })}
               </div>
             </CardContent>
           </Card>
@@ -1094,7 +1229,7 @@ export default function InventoryPage() {
                                 onCheckedChange={handleSelectAllItems}
                               />
                             ) : (
-                              <div className="flex items-center space-x-2">
+                              <div className={`flex items-center space-x-2 ${column.key === 'value' ? 'justify-end' : ''}`}>
                                 <span>{column.label}</span>
                                 <div className="flex flex-col space-y-0.5 opacity-50">
                                   <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
@@ -1119,7 +1254,10 @@ export default function InventoryPage() {
                           onClick={(e) => handleRowClick(item.id, e)}
                         >
                           {columnOrder.map((column) => (
-                            <TableCell key={`${item._id}-${column.key}`} className={column.width}>
+                            <TableCell 
+                              key={`${item._id}-${column.key}`} 
+                              className={`${column.width} ${column.key === 'value' ? 'text-right' : ''}`}
+                            >
                               {renderCellContent(item, column.key)}
                             </TableCell>
                           ))}

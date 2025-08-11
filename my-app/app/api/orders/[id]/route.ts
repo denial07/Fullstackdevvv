@@ -2,8 +2,9 @@ import { connectToDatabase } from "@/lib/mongodb";
 import Order from "@/lib/models/Order";
 import { NextResponse } from "next/server";
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
     try {
+        const params = await context.params
         await connectToDatabase();
         const order = await Order.findOne({ id: params.id }).lean();
         if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
@@ -14,8 +15,9 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     }
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
     try {
+        const params = await context.params
         const data = await req.json();
         await connectToDatabase();
         const updated = await Order.findOneAndUpdate({ id: params.id }, data, {
@@ -30,8 +32,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 }
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_: Request, context: { params: Promise<{ id: string }> }) {
     try {
+        const params = await context.params
         await connectToDatabase();
         const deleted = await Order.findOneAndDelete({ id: params.id });
         if (!deleted) return NextResponse.json({ error: "Order not found" }, { status: 404 });

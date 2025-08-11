@@ -5,11 +5,12 @@ import { NextResponse } from "next/server";
 
 export async function GET(
     req: Request,
-    context: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
     try {
+        const params = await context.params
         await connectToDatabase()
-        const shipment = await Shipment.findById(context.params.id)
+        const shipment = await Shipment.findById(params.id)
 
         if (!shipment) {
             return new Response(JSON.stringify({ error: "Shipment not found" }), {
@@ -33,9 +34,10 @@ export async function GET(
 
 export async function PATCH(
     req: Request,
-    { params }: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
     try {
+        const params = await context.params
         await connectToDatabase();
         const data = await req.json();
 
@@ -56,11 +58,12 @@ export async function PATCH(
 }
 export async function DELETE(
     req: Request,
-    context: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
     try {
+        const params = await context.params
         await connectToDatabase()
-        const deleted = await Shipment.findByIdAndDelete(context.params.id)
+        const deleted = await Shipment.findByIdAndDelete(params.id)
 
         if (!deleted) {
             return new Response("Shipment not found", { status: 404 })

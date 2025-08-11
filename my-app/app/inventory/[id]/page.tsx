@@ -162,25 +162,38 @@ const calculateSuggestedOrder = (currentStock: number, minStock: number, maxStoc
   return Math.ceil(maxStock * 0.3)
 }
 
-export default function MaterialDetailPage({ params }: { params: { id: string } }) {
+export default function MaterialDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const [material, setMaterial] = useState<InventoryItem | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showOrderDialog, setShowOrderDialog] = useState(false)
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
+  const [resolvedParams, setResolvedParams] = useState<{ id: string } | null>(null)
   const router = useRouter()
 
   useEffect(() => {
-    fetchMaterial()
-  }, [params.id])
+    const resolveParams = async () => {
+      const resolved = await params
+      setResolvedParams(resolved)
+    }
+    resolveParams()
+  }, [params])
+
+  useEffect(() => {
+    if (resolvedParams?.id) {
+      fetchMaterial()
+    }
+  }, [resolvedParams?.id])
 
   const fetchMaterial = async () => {
+    if (!resolvedParams?.id) return
+    
     try {
       setLoading(true)
       setError(null)
 
-      console.log(`🔄 Fetching material ${params.id}...`)
-      const response = await fetch(`/api/inventory/${params.id}`)
+      console.log(`🔄 Fetching material ${resolvedParams.id}...`)
+      const response = await fetch(`/api/inventory/${resolvedParams.id}`)
 
       if (!response.ok) {
         if (response.status === 404) {

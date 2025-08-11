@@ -2,8 +2,8 @@ import { connectToDatabase } from "@/lib/mongodb"
 import Inventory from "@/lib/models/Inventory"
 import { NextResponse } from "next/server"
 
-export async function GET(request: Request, context: { params: { id: string } }) {
-  const { params } = context
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   try {
     console.log(`🔄 API: Fetching inventory item ${params.id}...`)
 
@@ -30,8 +30,8 @@ export async function GET(request: Request, context: { params: { id: string } })
   }
 }
 
-export async function PATCH(request: Request, context: { params: { id: string } }) {
-  const { params } = context
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   try {
     console.log(`🔄 API: Updating inventory item ${params.id}...`)
 
@@ -106,8 +106,8 @@ export async function PATCH(request: Request, context: { params: { id: string } 
   }
 }
 
-export async function DELETE(request: Request, context: { params: { id: string } }) {
-  const { params } = context
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params
   try {
     console.log(`🔄 API: Deleting inventory item ${params.id}...`)
 
