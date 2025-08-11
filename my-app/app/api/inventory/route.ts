@@ -2,13 +2,19 @@ import { connectToDatabase } from "@/lib/mongodb"
 import Inventory from "@/lib/models/Inventory"
 import { NextResponse } from "next/server"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     console.log("🔄 API: Starting inventory fetch...")
 
     // Test connection first
     await connectToDatabase()
     console.log("✅ API: Database connected successfully")
+
+    // Parse URL for pagination parameters
+    const { searchParams } = new URL(request.url)
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '1000') // Default to 1000 items
+    const skip = (page - 1) * limit
 
     // Check if collection exists and count documents
     const count = await Inventory.countDocuments()
@@ -20,13 +26,33 @@ export async function GET() {
         message: "No inventory items found. Please run the seeding script first.",
         data: [],
         isEmpty: true,
+        pagination: { page: 1, limit, total: 0, totalPages: 0 }
       })
     }
 
-    const inventory = await Inventory.find().sort({ createdAt: -1 })
-    console.log(`✅ API: Successfully fetched ${inventory.length} inventory items`)
+    const inventory = await Inventory.find()
+      .select('_id id item category quantity unit minStock maxStock location receivedDate expiryDate supplier costPerUnit status createdAt')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean() // Use lean() for better performance - returns plain JS objects instead of Mongoose documents
+      .exec()
+      
+    const totalPages = Math.ceil(count / limit)
+    
+    console.log(`✅ API: Successfully fetched ${inventory.length} inventory items (page ${page}/${totalPages})`)
 
-    return NextResponse.json(inventory)
+    return NextResponse.json({
+      data: inventory,
+      pagination: {
+        page,
+        limit,
+        total: count,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
+    })
   } catch (error: any) {
     console.error("❌ API Error:", error)
 

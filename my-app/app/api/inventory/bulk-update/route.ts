@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { connectToDatabase } from "@/lib/mongodb"
+import Inventory from "@/lib/models/Inventory"
 
 export async function PATCH(request: Request) {
   try {
@@ -19,10 +20,11 @@ export async function PATCH(request: Request) {
       )
     }
 
-    const { db } = await connectToDatabase()
+    // Connect to database
+    await connectToDatabase()
     
-    // Update multiple items at once
-    const result = await db.collection("inventory").updateMany(
+    // Update multiple items at once using Mongoose model
+    const result = await Inventory.updateMany(
       { id: { $in: itemIds } },
       { $set: updates }
     )

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -104,7 +104,9 @@ export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isFiltering, setIsFiltering] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
   const [filters, setFilters] = useState<Filters>({
     category: "",
     status: "",
@@ -159,16 +161,21 @@ export default function InventoryPage() {
     const savedOrder = localStorage.getItem("inventory-column-order")
     if (savedOrder) {
       try {
-        setColumnOrder(JSON.parse(savedOrder))
+        const parsed = JSON.parse(savedOrder)
+        setColumnOrder(parsed)
       } catch (error) {
         console.error("Failed to load column order:", error)
       }
     }
   }, [])
 
-  // Save column order to localStorage whenever it changes
+  // Save column order to localStorage with debouncing
   useEffect(() => {
-    localStorage.setItem("inventory-column-order", JSON.stringify(columnOrder))
+    const timeoutId = setTimeout(() => {
+      localStorage.setItem("inventory-column-order", JSON.stringify(columnOrder))
+    }, 500) // 500ms debounce
+
+    return () => clearTimeout(timeoutId)
   }, [columnOrder])
 
   // Drag and drop handlers with proper TypeScript types
@@ -227,7 +234,7 @@ export default function InventoryPage() {
   }
 
   // Function to render cell content based on column key
-  const renderCellContent = (item: InventoryItem, columnKey: string) => {
+  const renderCellContent = useCallback((item: InventoryItem, columnKey: string) => {
     const stockPercentage = (item.quantity / item.maxStock) * 100
     const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
 
@@ -310,31 +317,38 @@ export default function InventoryPage() {
       default:
         return null
     }
-  }
+  }, [selectedItems])
 
+  // Debounce search term
   useEffect(() => {
-    fetchInventory()
-  }, [])
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 300) // 300ms debounce
 
-  const fetchInventory = async () => {
+    return () => clearTimeout(timeoutId)
+  }, [searchTerm])
+
+  const fetchInventory = useCallback(async (page = 1, limit = 1000) => {
     try {
       setLoading(true)
       setError(null)
 
       console.log("🔄 Fetching inventory directly...")
-      const response = await fetch("/api/inventory")
+      const response = await fetch(`/api/inventory?page=${page}&limit=${limit}`)
 
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(`${errorData.error}: ${errorData.details || ""}`)
       }
 
-      const data = await response.json()
+      const result = await response.json()
 
-      if (data.isEmpty) {
+      if (result.isEmpty) {
         setError("No inventory data found. Please run the seeding script to populate the database.")
         setInventory([])
       } else {
+        // Handle both old format (direct array) and new format (with pagination)
+        const data = result.data || result
         setInventory(Array.isArray(data) ? data : [])
         console.log("✅ Successfully loaded inventory data")
       }
@@ -345,7 +359,12 @@ export default function InventoryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // Fetch inventory on component mount
+  useEffect(() => {
+    fetchInventory()
+  }, [fetchInventory])
 
   const handleRowClick = (itemId: string, event: React.MouseEvent) => {
     // Don't navigate if clicking on edit controls
@@ -355,11 +374,11 @@ export default function InventoryPage() {
     router.push(`/inventory/${itemId}`)
   }
 
-  const handleFilterChange = (key: keyof Filters, value: string) => {
+  const handleFilterChange = useCallback((key: keyof Filters, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }))
-  }
+  }, [])
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setFilters({
       category: "",
       status: "",
@@ -371,11 +390,14 @@ export default function InventoryPage() {
       maxCost: "",
     })
     setSearchTerm("")
-  }
+  }, [])
 
-  const getActiveFilterCount = () => {
-    return Object.values(filters).filter((value) => value !== "").length + (searchTerm ? 1 : 0)
-  }
+  const activeFilterCount = useMemo(() => {
+    return Object.values(filters).filter((value) => value !== "").length + (debouncedSearchTerm ? 1 : 0)
+  }, [filters, debouncedSearchTerm])
+
+  // Keep the function for backward compatibility but use the memoized value
+  const getActiveFilterCount = () => activeFilterCount
 
   // Bulk edit functions
   const handleSelectAllItems = () => {
@@ -386,13 +408,13 @@ export default function InventoryPage() {
     }
   }
 
-  const handleSelectItem = (itemId: string) => {
+  const handleSelectItem = useCallback((itemId: string) => {
     setSelectedItems(prev => 
       prev.includes(itemId) 
         ? prev.filter(id => id !== itemId)
         : [...prev, itemId]
     )
-  }
+  }, [])
 
   const handleBulkEdit = () => {
     if (selectedItems.length === 0) {
@@ -506,60 +528,86 @@ export default function InventoryPage() {
     fetchInventory()
   }
 
-  // Get unique values for filter dropdowns
-  const uniqueCategories = [...new Set(inventory.map((item) => item.category).filter(Boolean))].sort()
-  const uniqueStatuses = [...new Set(inventory.map((item) => item.status).filter(Boolean))].sort()
-  const uniqueLocations = [...new Set(inventory.map((item) => item.location).filter(Boolean))].sort()
-  const uniqueSuppliers = [...new Set(inventory.map((item) => item.supplier).filter(Boolean))].sort()
+  // Get unique values for filter dropdowns - memoized for performance
+  const uniqueCategories = useMemo(() => 
+    [...new Set(inventory.map((item) => item.category).filter(Boolean))].sort(), 
+    [inventory]
+  )
+  const uniqueStatuses = useMemo(() => 
+    [...new Set(inventory.map((item) => item.status).filter(Boolean))].sort(), 
+    [inventory]
+  )
+  const uniqueLocations = useMemo(() => 
+    [...new Set(inventory.map((item) => item.location).filter(Boolean))].sort(), 
+    [inventory]
+  )
+  const uniqueSuppliers = useMemo(() => 
+    [...new Set(inventory.map((item) => item.supplier).filter(Boolean))].sort(), 
+    [inventory]
+  )
 
-  const filteredInventory = inventory.filter((item) => {
-    // Search filter
-    const matchesSearch =
-      !searchTerm ||
-      item.item.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.supplier.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.id.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredInventory = useMemo(() => {
+    if (inventory.length > 100) {
+      setIsFiltering(true)
+    }
+    
+    const result = inventory.filter((item) => {
+      // Search filter - use debounced search term
+      const matchesSearch =
+        !debouncedSearchTerm ||
+        item.item.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        item.category.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        item.location.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        item.supplier.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        item.id.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
 
-    // Category filter
-    const matchesCategory = !filters.category || item.category === filters.category
+      // Category filter
+      const matchesCategory = !filters.category || item.category === filters.category
 
-    // Status filter
-    const matchesStatus = !filters.status || item.status === filters.status
+      // Status filter
+      const matchesStatus = !filters.status || item.status === filters.status
 
-    // Location filter
-    const matchesLocation = !filters.location || item.location === filters.location
+      // Location filter
+      const matchesLocation = !filters.location || item.location === filters.location
 
-    // Supplier filter
-    const matchesSupplier = !filters.supplier || item.supplier === filters.supplier
+      // Supplier filter
+      const matchesSupplier = !filters.supplier || item.supplier === filters.supplier
 
-    // Quantity filters
-    const matchesMinQuantity = !filters.minQuantity || item.quantity >= Number.parseInt(filters.minQuantity)
-    const matchesMaxQuantity = !filters.maxQuantity || item.quantity <= Number.parseInt(filters.maxQuantity)
+      // Quantity filters
+      const matchesMinQuantity = !filters.minQuantity || item.quantity >= Number.parseInt(filters.minQuantity)
+      const matchesMaxQuantity = !filters.maxQuantity || item.quantity <= Number.parseInt(filters.maxQuantity)
 
-    // Cost filters
-    const matchesMinCost = !filters.minCost || item.costPerUnit >= Number.parseFloat(filters.minCost)
-    const matchesMaxCost = !filters.maxCost || item.costPerUnit <= Number.parseFloat(filters.maxCost)
+      // Cost filters
+      const matchesMinCost = !filters.minCost || item.costPerUnit >= Number.parseFloat(filters.minCost)
+      const matchesMaxCost = !filters.maxCost || item.costPerUnit <= Number.parseFloat(filters.maxCost)
 
-    return (
-      matchesSearch &&
-      matchesCategory &&
-      matchesStatus &&
-      matchesLocation &&
-      matchesSupplier &&
-      matchesMinQuantity &&
-      matchesMaxQuantity &&
-      matchesMinCost &&
-      matchesMaxCost
-    )
-  })
+      return (
+        matchesSearch &&
+        matchesCategory &&
+        matchesStatus &&
+        matchesLocation &&
+        matchesSupplier &&
+        matchesMinQuantity &&
+        matchesMaxQuantity &&
+        matchesMinCost &&
+        matchesMaxCost
+      )
+    })
+    
+    setIsFiltering(false)
+    return result
+  }, [inventory, debouncedSearchTerm, filters])
 
-  const totalItems = inventory.length
-  const lowStockItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "low stock").length
-  const expiringSoonItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "expiring soon").length
-  const expiredItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "expired").length
-  const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.costPerUnit, 0)
+  // Memoize expensive calculations
+  const { totalItems, lowStockItems, expiringSoonItems, expiredItems, totalValue } = useMemo(() => {
+    const totalItems = inventory.length
+    const lowStockItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "low stock").length
+    const expiringSoonItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "expiring soon").length
+    const expiredItems = inventory.filter((item) => item.status?.trim().toLowerCase() === "expired").length
+    const totalValue = inventory.reduce((sum, item) => sum + item.quantity * item.costPerUnit, 0)
+    
+    return { totalItems, lowStockItems, expiringSoonItems, expiredItems, totalValue }
+  }, [inventory])
 
   if (loading) {
     return (
@@ -609,7 +657,7 @@ export default function InventoryPage() {
               </pre>
             </div>
 
-            <Button onClick={fetchInventory} className="w-full">
+            <Button onClick={() => fetchInventory()} className="w-full">
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
             </Button>
@@ -716,7 +764,7 @@ export default function InventoryPage() {
               <p className="text-gray-600 mb-4">
                 No inventory items found in the database. Run the seeding script to populate with sample data.
               </p>
-              <Button onClick={fetchInventory}>
+              <Button onClick={() => fetchInventory()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
