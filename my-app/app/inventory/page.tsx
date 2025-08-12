@@ -39,6 +39,7 @@ import { Navbar } from "@/components/navbar"
 // Import the new components at the top of the file
 import { ExcelImportModal } from "@/components/excel-import-modal"
 import { ExcelTemplateGenerator } from "@/components/excel-template-generator"
+import ExcelJS from "exceljs"
 
 interface InventoryItem {
   _id: string
@@ -468,6 +469,95 @@ export default function InventoryPage() {
     }
   }, [])
 
+  // Export all inventory items to Excel in the same format as the template
+  const exportToExcel = useCallback(async () => {
+    if (inventory.length === 0) {
+      toast.error("No inventory data to export")
+      return
+    }
+
+    try {
+      toast.loading("Preparing export...", { id: "export" })
+
+      // Create workbook and worksheet
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet("Inventory Export")
+
+      // Define headers matching the template format
+      const headers = [
+        "id",
+        "item", 
+        "category",
+        "quantity",
+        "unit",
+        "minStock",
+        "maxStock",
+        "location",
+        "receivedDate",
+        "expiryDate",
+        "supplier",
+        "costPerUnit"
+      ]
+
+      // Add headers
+      worksheet.addRow(headers)
+
+      // Add data rows
+      inventory.forEach(item => {
+        worksheet.addRow([
+          item.id,
+          item.item,
+          item.category,
+          item.quantity,
+          item.unit,
+          item.minStock,
+          item.maxStock,
+          item.location,
+          item.receivedDate,
+          item.expiryDate,
+          item.supplier,
+          item.costPerUnit
+        ])
+      })
+
+      // Style the header row
+      worksheet.getRow(1).font = { bold: true }
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE0E0E0' }
+      }
+
+      // Auto-fit column widths
+      worksheet.columns.forEach(column => {
+        column.width = 15
+      })
+
+      // Generate file and trigger download
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      })
+      
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      
+      // Generate filename with current date
+      const now = new Date()
+      const dateStr = now.toISOString().split('T')[0]
+      a.download = `inventory_export_${dateStr}.xlsx`
+      
+      a.click()
+      window.URL.revokeObjectURL(url)
+
+      toast.success(`Exported ${inventory.length} items to Excel`, { id: "export" })
+    } catch (error) {
+      console.error("Export error:", error)
+      toast.error("Failed to export inventory", { id: "export" })
+    }
+  }, [inventory])
+
   // Fetch inventory on component mount
   useEffect(() => {
     fetchInventory()
@@ -799,7 +889,12 @@ export default function InventoryPage() {
               <p className="text-gray-600">Track wood inventory and expiry dates</p>
             </div>
             <div className="flex space-x-2">
-              <Button variant="outline" size="sm">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={exportToExcel}
+                disabled={inventory.length === 0}
+              >
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
