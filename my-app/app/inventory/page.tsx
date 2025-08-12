@@ -33,6 +33,10 @@ import {
   AlertCircle,
   XCircle,
   TrendingDown as TrendingDownIcon,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
@@ -211,22 +215,22 @@ export default function InventoryPage() {
   const router = useRouter()
   // Add state for the import modal inside the InventoryPage component
   const [showImportModal, setShowImportModal] = useState(false)
+  // Add state for expanded row details
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  // Add pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(25)
 
-  // Add column configuration and drag-and-drop state
+  // Simplified column configuration - decluttered and grouped
   const defaultColumns = [
     { key: "select", label: "", width: "w-12" },
-    { key: "id", label: "Item ID", width: "w-24" },
-    { key: "item", label: "Item Name", width: "w-40" },
+    { key: "item", label: "Item Details", width: "w-96" }, // Wider for item name + status
     { key: "category", label: "Category", width: "w-28" },
-    { key: "quantity", label: "Quantity (m³)", width: "w-32" },
-    { key: "stockLevel", label: "Stock Level (m³)", width: "w-32" },
+    { key: "stockInfo", label: "Stock Info", width: "w-40" }, // Combined quantity + stock level
+    { key: "expiryInfo", label: "Expiry Info", width: "w-36" }, // Combined expiry + days
     { key: "location", label: "Location", width: "w-32" },
-    { key: "receivedDate", label: "Received Date", width: "w-28" },
-    { key: "expiryDate", label: "Expiry Date", width: "w-28" },
-    { key: "daysToExpiry", label: "Days to Expiry", width: "w-36" },
-    { key: "status", label: "Status", width: "w-40" },
     { key: "value", label: "Value (S$)", width: "w-28 text-right" },
-    { key: "actions", label: "Actions", width: "w-20" },
+    { key: "actions", label: "Actions", width: "w-24" },
   ]
 
   const [columnOrder, setColumnOrder] = useState(defaultColumns)
@@ -314,6 +318,30 @@ export default function InventoryPage() {
   const renderCellContent = useCallback((item: InventoryItem, columnKey: string) => {
     const stockPercentage = (item.quantity / item.maxStock) * 100
     const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+    const isExpanded = expandedRows.has(item.id)
+
+    // Consistent color scheme
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case "Good": return "text-green-700 bg-green-100 border-green-200"
+        case "Low Stock": return "text-amber-700 bg-amber-100 border-amber-200"
+        case "Expiring Soon": return "text-amber-700 bg-amber-100 border-amber-200"
+        case "Expired": return "text-red-700 bg-red-100 border-red-200"
+        default: return "text-gray-700 bg-gray-100 border-gray-200"
+      }
+    }
+
+    const getStockColor = (percentage: number) => {
+      if (percentage >= 75) return "bg-green-500"
+      if (percentage >= 25) return "bg-amber-500"
+      return "bg-red-500"
+    }
+
+    const getExpiryColor = (days: number) => {
+      if (days < 0) return "bg-red-500"
+      if (days <= 30) return "bg-amber-500"
+      return "bg-green-500"
+    }
 
     switch (columnKey) {
       case "select":
@@ -324,90 +352,160 @@ export default function InventoryPage() {
             onClick={(e) => e.stopPropagation()}
           />
         )
-      case "id":
-        return <span className="font-medium">{item.id}</span>
+
       case "item":
-        return item.item
-      case "category":
-        return item.category
-      case "quantity":
+        const statusBadge = getEnhancedStatusBadge(item)
         return (
-          <span className="font-medium">
-            {item.quantity.toLocaleString()}
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              {/* Large, bold item name */}
+              <div className="flex-1">
+                <div className="font-bold text-lg text-gray-900 leading-tight">
+                  {item.item}
+                </div>
+                <div className="text-sm text-gray-500 mt-0.5">
+                  ID: {item.id}
+                </div>
+              </div>
+              {/* Status badge directly beside name - Fixed width for consistency */}
+              <span className={`inline-flex items-center justify-center gap-1 px-3 py-1 rounded-full text-xs font-semibold min-w-[100px] text-center ${getStatusColor(item.status)}`}>
+                {statusBadge.icon}
+                {statusBadge.text}
+              </span>
+            </div>
+            
+            {/* Expandable details */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                const newExpanded = new Set(expandedRows)
+                if (isExpanded) {
+                  newExpanded.delete(item.id)
+                } else {
+                  newExpanded.add(item.id)
+                }
+                setExpandedRows(newExpanded)
+              }}
+              className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+            >
+              {isExpanded ? '▼' : '▶'} {isExpanded ? 'Less' : 'More'} details
+            </button>
+
+            {/* Hidden detail view */}
+            {isExpanded && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg border space-y-2">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-gray-500">Received:</span>
+                    <div className="font-medium">{item.receivedDate}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Supplier:</span>
+                    <div className="font-medium">{item.supplier}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Cost/Unit:</span>
+                    <div className="font-medium">S${item.costPerUnit}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Min/Max Stock:</span>
+                    <div className="font-medium">{item.minStock}/{item.maxStock} {item.unit}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+
+      case "category":
+        return (
+          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-sm font-medium">
+            {item.category}
           </span>
         )
-      case "stockLevel":
+
+      case "stockInfo":
         return (
           <div className="space-y-2">
-            <div className="w-full bg-gray-200 rounded-full h-3 relative overflow-hidden">
-              <div 
-                className={`h-full rounded-full transition-all duration-300 ${getStockLevelColor(stockPercentage)}`}
-                style={{ width: `${Math.min(stockPercentage, 100)}%` }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-xs font-medium text-gray-700">
-                  {stockPercentage.toFixed(0)}%
-                </span>
+            <div className="text-center">
+              <div className="font-bold text-lg">
+                {item.quantity.toLocaleString()} <span className="text-sm font-normal text-gray-500">{item.unit}</span>
               </div>
             </div>
-            <div className="text-xs text-gray-600 text-center">
-              {item.quantity.toLocaleString()}/{item.maxStock.toLocaleString()}
+            
+            {/* Stock level bar with consistent colors */}
+            <div className="w-full bg-gray-200 rounded-full h-2 relative overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all duration-300 ${getStockColor(stockPercentage)}`}
+                style={{ width: `${Math.min(stockPercentage, 100)}%` }}
+              />
+            </div>
+            
+            <div className="text-xs text-center">
+              <span className={`font-medium ${stockPercentage >= 75 ? 'text-green-600' : stockPercentage >= 25 ? 'text-amber-600' : 'text-red-600'}`}>
+                {stockPercentage.toFixed(0)}% capacity
+              </span>
             </div>
           </div>
         )
-      case "location":
-        return item.location
-      case "receivedDate":
-        return item.receivedDate
-      case "expiryDate":
-        return item.expiryDate
-      case "daysToExpiry":
-        const maxDays = 365 // Assume max reasonable expiry is 1 year for progress calculation
+
+      case "expiryInfo":
+        const maxDays = 365
         const progressPercentage = daysToExpiry < 0 ? 0 : Math.min((daysToExpiry / maxDays) * 100, 100)
         
         return (
           <div className="space-y-2">
+            <div className="text-center">
+              <div className="font-bold text-sm">
+                {item.expiryDate}
+              </div>
+            </div>
+            
+            {/* Expiry progress bar with consistent colors */}
             <div className="w-full bg-gray-200 rounded-full h-2 relative overflow-hidden">
               <div 
-                className={`h-full rounded-full transition-all duration-300 ${getExpiryProgressColor(daysToExpiry)}`}
+                className={`h-full rounded-full transition-all duration-300 ${getExpiryColor(daysToExpiry)}`}
                 style={{ width: `${progressPercentage}%` }}
               />
             </div>
-            <div className={`text-xs text-center font-medium ${
-              daysToExpiry < 0 
-                ? "text-red-600" 
-                : daysToExpiry < 30 
-                  ? "text-orange-600" 
-                  : daysToExpiry < 90
-                    ? "text-yellow-600"
-                    : "text-green-600"
-            }`}>
-              {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)}d overdue` : `${daysToExpiry}d left`}
+            
+            <div className="text-xs text-center">
+              <span className={`font-medium ${
+                daysToExpiry < 0 ? "text-red-600" 
+                : daysToExpiry <= 30 ? "text-amber-600" 
+                : "text-green-600"
+              }`}>
+                {daysToExpiry < 0 ? `${Math.abs(daysToExpiry)}d overdue` : `${daysToExpiry}d left`}
+              </span>
             </div>
           </div>
         )
-      case "status":
-        const statusBadge = getEnhancedStatusBadge(item)
+
+      case "location":
         return (
-          <div className="flex items-center justify-center">
-            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${statusBadge.color}`}>
-              <span>{statusBadge.icon}</span>
-              {statusBadge.text}
-            </span>
-          </div>
-        )
-      case "value":
-        return (
-          <span className="font-medium">
-            {(item.quantity * item.costPerUnit).toLocaleString('en-US', {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0
-            })}
+          <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-sm font-medium">
+            {item.location}
           </span>
         )
+
+      case "value":
+        return (
+          <div className="text-right">
+            <div className="font-bold text-lg">
+              S${(item.quantity * item.costPerUnit).toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+              })}
+            </div>
+            <div className="text-xs text-gray-500">
+              @S${item.costPerUnit}/{item.unit}
+            </div>
+          </div>
+        )
+
       case "actions":
         return (
-          <div className="edit-controls flex items-center space-x-2">
+          <div className="edit-controls flex items-center justify-center space-x-2">
             <Button
               size="sm"
               variant="ghost"
@@ -422,10 +520,11 @@ export default function InventoryPage() {
             </Button>
           </div>
         )
+
       default:
         return null
     }
-  }, [selectedItems])
+  }, [selectedItems, expandedRows])
 
   // Debounce search term
   useEffect(() => {
@@ -598,10 +697,15 @@ export default function InventoryPage() {
 
   // Bulk edit functions
   const handleSelectAllItems = () => {
-    if (selectedItems.length === filteredInventory.length) {
-      setSelectedItems([])
+    const currentPageIds = paginatedInventory.map(item => item.id)
+    const allCurrentPageSelected = currentPageIds.every(id => selectedItems.includes(id))
+    
+    if (allCurrentPageSelected) {
+      // Deselect all items on current page
+      setSelectedItems(prev => prev.filter(id => !currentPageIds.includes(id)))
     } else {
-      setSelectedItems(filteredInventory.map(item => item.id))
+      // Select all items on current page
+      setSelectedItems(prev => [...prev.filter(id => !currentPageIds.includes(id)), ...currentPageIds])
     }
   }
 
@@ -794,6 +898,31 @@ export default function InventoryPage() {
     setIsFiltering(false)
     return result
   }, [inventory, debouncedSearchTerm, filters])
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredInventory.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedInventory = filteredInventory.slice(startIndex, endIndex)
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filteredInventory.length])
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+    // Scroll to top of table
+    const tableElement = document.getElementById('inventory-table')
+    if (tableElement) {
+      tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(Number(value))
+    setCurrentPage(1)
+  }
 
   // Memoize expensive calculations with enhanced status logic
   const { totalItems, lowStockItems, expiringSoonItems, expiredItems, totalValue } = useMemo(() => {
@@ -988,56 +1117,93 @@ export default function InventoryPage() {
           </Card>
         )}
 
-        {/* Critical Alerts */}
+        {/* Critical Alerts - Simplified and Concise */}
         {inventory.length > 0 && (
           <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center text-lg">
                 <AlertTriangle className="h-5 w-5 mr-2 text-red-500" />
                 Critical Alerts
               </CardTitle>
-              <CardDescription>Items requiring immediate attention</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {inventory
                   .filter(item => {
                     const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
                     const stockPercentage = (item.quantity / item.maxStock) * 100
-                    return daysToExpiry < 30 || stockPercentage < 20
+                    return daysToExpiry < 30 || stockPercentage < 25
                   })
                   .map((item) => {
-                    const statusBadge = getEnhancedStatusBadge(item)
                     const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+                    const stockPercentage = (item.quantity / item.maxStock) * 100
                     
+                    // Determine alert type and message
+                    let alertType = 'Good'
+                    let alertMessage = ''
+                    let alertColor = 'bg-green-50 border-green-200'
+                    
+                    if (daysToExpiry < 0) {
+                      alertType = 'Expired'
+                      alertMessage = `Expired: ${Math.abs(daysToExpiry)} days overdue`
+                      alertColor = 'bg-red-50 border-red-200 hover:bg-red-100'
+                    } else if (daysToExpiry <= 7) {
+                      alertType = 'Critical'
+                      alertMessage = `Expires: ${daysToExpiry}d left`
+                      alertColor = 'bg-red-50 border-red-200 hover:bg-red-100'
+                    } else if (daysToExpiry <= 30) {
+                      alertType = 'Warning'
+                      alertMessage = `Expiring Soon: ${daysToExpiry}d left`
+                      alertColor = 'bg-amber-50 border-amber-200 hover:bg-amber-100'
+                    } else if (stockPercentage < 25) {
+                      alertType = 'Low Stock'
+                      alertMessage = `Low Stock: ${item.quantity}${item.unit} left`
+                      alertColor = 'bg-amber-50 border-amber-200 hover:bg-amber-100'
+                    }
+
                     return (
                       <div
                         key={item._id}
-                        className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${
-                          daysToExpiry < 0 
-                            ? 'bg-red-50 border-red-200 hover:bg-red-100'
-                            : daysToExpiry < 30 
-                              ? 'bg-orange-50 border-orange-200 hover:bg-orange-100'
-                              : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-                        }`}
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${alertColor}`}
                         onClick={(e) => handleRowClick(item.id, e)}
                       >
-                        <div className="flex items-center space-x-3">
-                          <span className="text-lg">{statusBadge.icon}</span>
-                          <div>
-                            <p className="font-medium">{item.item}</p>
-                            <p className="text-sm text-gray-600">
-                              {item.quantity.toLocaleString()} m³ - Expires: {item.expiryDate}
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-gray-900 truncate">{item.item}</p>
+                            <p className={`text-sm font-medium mt-1 ${
+                              alertType === 'Expired' || alertType === 'Critical' 
+                                ? 'text-red-600' 
+                                : alertType === 'Warning' || alertType === 'Low Stock'
+                                  ? 'text-amber-600'
+                                  : 'text-green-600'
+                            }`}>
+                              {alertMessage}
                             </p>
                           </div>
+                          <div className={`ml-2 h-3 w-3 rounded-full ${
+                            alertType === 'Expired' || alertType === 'Critical' 
+                              ? 'bg-red-500' 
+                              : alertType === 'Warning' || alertType === 'Low Stock'
+                                ? 'bg-amber-500'
+                                : 'bg-green-500'
+                          }`} />
                         </div>
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${statusBadge.color}`}>
-                          <span>{statusBadge.icon}</span>
-                          {statusBadge.text}
-                        </span>
                       </div>
                     )
                   })}
+                  
+                {/* No alerts message */}
+                {inventory.filter(item => {
+                  const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+                  const stockPercentage = (item.quantity / item.maxStock) * 100
+                  return daysToExpiry < 30 || stockPercentage < 25
+                }).length === 0 && (
+                  <div className="col-span-full text-center py-8">
+                    <CheckCircle className="mx-auto h-12 w-12 text-green-500 mb-3" />
+                    <p className="text-gray-600 font-medium">All items are in good condition</p>
+                    <p className="text-sm text-gray-500">No critical alerts at this time</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1302,64 +1468,163 @@ export default function InventoryPage() {
                     </div>
                   </div>
 
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {columnOrder.map((column, index) => (
-                          <TableHead
-                            key={column.key}
-                            className={`${column.width} ${column.key === 'select' ? 'cursor-default' : 'cursor-move'} select-none transition-colors ${
-                              dragOverColumn === index ? "bg-blue-100 border-l-2 border-blue-500" : ""
-                            } ${draggedColumn === index ? "opacity-50" : ""}`}
-                            draggable={column.key !== 'select'}
-                            onDragStart={column.key !== 'select' ? (e) => handleDragStart(e, index) : undefined}
-                            onDragEnd={column.key !== 'select' ? handleDragEnd : undefined}
-                            onDragOver={column.key !== 'select' ? (e) => handleDragOver(e, index) : undefined}
-                            onDragLeave={column.key !== 'select' ? handleDragLeave : undefined}
-                            onDrop={column.key !== 'select' ? (e) => handleDrop(e, index) : undefined}
-                          >
-                            {column.key === 'select' ? (
-                              <Checkbox
-                                checked={selectedItems.length === filteredInventory.length && filteredInventory.length > 0}
-                                onCheckedChange={handleSelectAllItems}
-                              />
-                            ) : (
-                              <div className={`flex items-center space-x-2 ${column.key === 'value' ? 'justify-end' : ''}`}>
-                                <span>{column.label}</span>
-                                <div className="flex flex-col space-y-0.5 opacity-50">
-                                  <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                                  <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                                  <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                                </div>
-                              </div>
-                            )}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredInventory.map((item) => (
-                        <TableRow
-                          key={item._id}
-                          className={`cursor-pointer transition-colors group ${
-                            selectedItems.includes(item.id) 
-                              ? "bg-blue-50 hover:bg-blue-100" 
-                              : "hover:bg-gray-50"
-                          }`}
-                          onClick={(e) => handleRowClick(item.id, e)}
-                        >
-                          {columnOrder.map((column) => (
-                            <TableCell 
-                              key={`${item._id}-${column.key}`} 
-                              className={`${column.width} ${column.key === 'value' ? 'text-right' : ''}`}
+                  <div id="inventory-table" className="rounded-md border bg-white">
+                    <div className="overflow-auto max-h-[600px]">
+                      <table className="w-full">
+                        <thead className="bg-white sticky top-0 z-20 border-b border-gray-200">
+                          <tr className="border-b border-gray-200">
+                            {columnOrder.map((column, index) => (
+                              <th
+                                key={column.key}
+                                className={`${column.width} ${column.key === 'select' ? 'cursor-default' : 'cursor-move'} select-none transition-colors bg-white p-3 text-left font-medium text-gray-900 border-b border-gray-200 ${
+                                  dragOverColumn === index ? "bg-blue-100 border-l-2 border-blue-500" : ""
+                                } ${draggedColumn === index ? "opacity-50" : ""}`}
+                                style={{ 
+                                  position: 'sticky', 
+                                  top: 0, 
+                                  backgroundColor: 'white', 
+                                  zIndex: 20,
+                                  boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
+                                }}
+                                draggable={column.key !== 'select'}
+                                onDragStart={column.key !== 'select' ? (e) => handleDragStart(e, index) : undefined}
+                                onDragEnd={column.key !== 'select' ? handleDragEnd : undefined}
+                                onDragOver={column.key !== 'select' ? (e) => handleDragOver(e, index) : undefined}
+                                onDragLeave={column.key !== 'select' ? handleDragLeave : undefined}
+                                onDrop={column.key !== 'select' ? (e) => handleDrop(e, index) : undefined}
+                              >
+                                {column.key === 'select' ? (
+                                  <Checkbox
+                                    checked={selectedItems.length === paginatedInventory.length && paginatedInventory.length > 0}
+                                    onCheckedChange={handleSelectAllItems}
+                                  />
+                                ) : (
+                                  <div className={`flex items-center space-x-2 ${column.key === 'value' ? 'justify-end' : ''}`}>
+                                    <span>{column.label}</span>
+                                    <div className="flex flex-col space-y-0.5 opacity-50">
+                                      <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                                      <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                                      <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                                    </div>
+                                  </div>
+                                )}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paginatedInventory.map((item) => (
+                            <tr
+                              key={item._id}
+                              className={`cursor-pointer transition-colors group border-b border-gray-100 ${
+                                selectedItems.includes(item.id) 
+                                  ? "bg-blue-50 hover:bg-blue-100" 
+                                  : "hover:bg-gray-50"
+                              }`}
+                              onClick={(e) => handleRowClick(item.id, e)}
+                            >
+                              {columnOrder.map((column) => (
+                                <td 
+                                  key={`${item._id}-${column.key}`} 
+                              className={`${column.width} ${column.key === 'value' ? 'text-right' : ''} py-4 px-4 align-top`}
                             >
                               {renderCellContent(item, column.key)}
-                            </TableCell>
+                            </td>
                           ))}
-                        </TableRow>
+                        </tr>
                       ))}
-                    </TableBody>
-                  </Table>
+                    </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Pagination Controls */}
+                  <div className="flex items-center justify-between px-2 py-4 border-t">
+                    <div className="flex items-center space-x-4">
+                      <p className="text-sm text-gray-700">
+                        Showing {startIndex + 1} to {Math.min(endIndex, filteredInventory.length)} of {filteredInventory.length} items
+                      </p>
+                      {selectedItems.length > 0 && (
+                        <p className="text-sm text-blue-600 font-medium">
+                          {selectedItems.length} item{selectedItems.length !== 1 ? 's' : ''} selected
+                        </p>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center space-x-6 lg:space-x-8">
+                      <div className="flex items-center space-x-2">
+                        <p className="text-sm font-medium">Items per page</p>
+                        <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                          <SelectTrigger className="h-8 w-[70px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent side="top">
+                            <SelectItem value="10">10</SelectItem>
+                            <SelectItem value="25">25</SelectItem>
+                            <SelectItem value="50">50</SelectItem>
+                            <SelectItem value="100">100</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(1)}
+                          disabled={currentPage === 1}
+                        >
+                          <ChevronsLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          disabled={currentPage === 1}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        
+                        <div className="flex items-center space-x-1">
+                          {/* Show pagination numbers */}
+                          {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                            const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i
+                            if (pageNum <= totalPages) {
+                              return (
+                                <Button
+                                  key={pageNum}
+                                  variant={currentPage === pageNum ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handlePageChange(pageNum)}
+                                  className="w-8 h-8"
+                                >
+                                  {pageNum}
+                                </Button>
+                              )
+                            }
+                            return null
+                          })}
+                        </div>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(totalPages)}
+                          disabled={currentPage === totalPages}
+                        >
+                          <ChevronsRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
