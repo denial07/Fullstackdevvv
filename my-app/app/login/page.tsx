@@ -103,6 +103,11 @@ export default function LoginPage() {
       // Store user session (normal login without 2FA)
       localStorage.setItem('user', JSON.stringify(data.user));
       
+      // Store token if available for API authentication
+      if (data.token) {
+        localStorage.setItem('auth-token', data.token);
+      }
+      
       // Save email if remember me is checked
       if (rememberMe) {
         localStorage.setItem('rememberMe', 'true')
