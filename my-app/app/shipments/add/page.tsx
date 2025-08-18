@@ -2,6 +2,8 @@
 
 import type React from "react"
 import { useRouter } from "next/navigation"
+import ImportExcelDialog from "@/components/imports/ImportExcelDialog";
+
 
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ArrowLeft, CalendarIcon, Save, Plus, Trash2 } from "lucide-react"
+import { ArrowLeft, CalendarIcon, Save, Plus, Trash2, Upload } from "lucide-react"
 import { format } from "date-fns"
 import Link from "next/link"
 import { UserNav } from "@/components/user-nav"
@@ -114,22 +116,42 @@ export default function AddShipmentPage() {
             <header className="bg-white shadow-sm border-b">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between py-6">
-                        <div className="flex items-center space-x-4">
+                        {/* Left: back + title */}
+                        <div className="flex items-center gap-4 min-w-0">
                             <Button variant="ghost" size="sm" asChild>
                                 <Link href="/shipments">
                                     <ArrowLeft className="h-4 w-4 mr-2" />
                                     Back to Shipments
                                 </Link>
                             </Button>
-                            <div>
-                                <h1 className="text-3xl font-bold text-gray-900">Add New Shipment</h1>
-                                <p className="text-gray-600">Create a new incoming or outgoing shipment</p>
+                            <div className="min-w-0">
+                                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                                    Add New Shipment
+                                </h1>
+                                <p className="text-gray-600 truncate">
+                                    Create a new incoming or outgoing shipment
+                                </p>
                             </div>
                         </div>
-                        <UserNav />
+
+                        {/* Right: actions (Import + User) */}
+                        <div className="flex items-center gap-2">
+                            <ImportExcelDialog
+                                entity="Shipment"
+                                onCommitted={() => router.refresh?.()}
+                                trigger={
+                                    <Button variant="secondary" size="sm">
+                                        <Upload className="h-4 w-4 mr-2" />
+                                        Import Excel
+                                    </Button>
+                                }
+                            />
+                            <UserNav />
+                        </div>
                     </div>
                 </div>
             </header>
+
 
             <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <form onSubmit={handleSubmit} className="space-y-6">
