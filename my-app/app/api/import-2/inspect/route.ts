@@ -11,6 +11,8 @@ import ImportSession from "@/lib/models/ImportSession";
 import { proposeHeaderMapping, type FieldDef } from "@/lib/import/header-map";
 import { buildDuplicateReport } from "@/lib/import/duplicates";
 import { getEntityModel } from "@/lib/import/model";
+import { buildScrubbedSamples } from "@/lib/import/scrub";
+import { geminiSuggestMappings } from "@/lib/import/llm-mapper";
 
 const normalizeHeader = (h: string) =>
     h.toLowerCase().replace(/[\s_\-\/]+/g, " ").trim();
@@ -20,6 +22,7 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const file = form.get("file") as File | null;
     const entity = String(form.get("entity") ?? "Shipment");
+
 
     if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
 
@@ -85,38 +88,84 @@ export async function POST(req: NextRequest) {
         fieldDefs
     );
 
+    const ambiguous = proposals.filter((p) => p.needsUserDecision).map((p) => p.incoming);
+
+    const samplesByHeader = buildScrubbedSamples(rows, Object.keys(rows[0] ?? {}));
+
+
+
     // ---- duplicates against current DB (if model exists) ----
     const Model = getEntityModel(entity);
     const existing = Model ? await Model.find().limit(5000).lean() : [];
     const dedupeReport = buildDuplicateReport(rows, headers, existing);
 
-    // ---- persist a DRY_RUN session for audit/idempotency ----
-    const sessionDoc = await ImportSession.create({
-        entity,
-        fileHash,
-        stats: {
-            rows: rows.length,
-            headers: normalizedHeaders,
-            hasActiveProfile: !!activeProfile,
-            mappingAuto: proposals.filter((p) => p.autoMapped).length,
-            mappingNeedUser: proposals.filter((p) => p.needsUserDecision).length,
-            potentialDuplicates: dedupeReport.review.length,
-            autoInsertCandidates: dedupeReport.autoInsert.length,
-        },
-        status: "DRY_RUN",
+
+
+    const samplesByNormalized: Record<string, string[]> = {};
+    normalizedHeaders.forEach((nh, i) => {
+        const original = Object.keys(rows[0])[i];
+        samplesByNormalized[nh] = samplesByHeader[original] || [];
     });
+
+    const aiPicks = await geminiSuggestMappings({
+        incomingHeaders: ambiguous,
+        canonicalFields: fieldDefs.map((f) => ({ name: f.name, type: f.type })),
+        samplesByHeader: samplesByNormalized,
+    });
+
+    const AI_AUTOMAP_THRESHOLD = 0.95; // your rule: both ≥ 95%
+    for (const pick of aiPicks) {
+        const idx = proposals.findIndex((p) => p.incoming === pick.incoming);
+        if (idx === -1) continue;
+
+        if (pick.mapTo) {
+            proposals[idx].bestMatch = pick.mapTo;
+            proposals[idx].nameConfidence = Math.max(proposals[idx].nameConfidence, pick.nameConfidence);
+            proposals[idx].typeConfidence = Math.max(proposals[idx].typeConfidence, pick.typeConfidence);
+
+            const ok = pick.nameConfidence >= AI_AUTOMAP_THRESHOLD && pick.typeConfidence >= AI_AUTOMAP_THRESHOLD;
+
+            proposals[idx].autoMapped = ok || proposals[idx].autoMapped;
+            proposals[idx].needsUserDecision = !proposals[idx].autoMapped;
+        } else {
+            // AI couldn't decide — keep as-is but attach hint
+            proposals[idx].bestMatch = proposals[idx].bestMatch ?? null;
+            proposals[idx].needsUserDecision = true;
+        }
+    }
+
+        // ---- persist a DRY_RUN session for audit/idempotency ----
+    const sessionDoc = await ImportSession.findOneAndUpdate(
+        { entity, fileHash },                             // match
+        {
+            $set: {
+                stats: {
+                    rows: rows.length,
+                    headers: normalizedHeaders,
+                    hasActiveProfile: !!activeProfile,
+                    mappingAuto: proposals.filter((p) => p.autoMapped).length,
+                    mappingNeedUser: proposals.filter((p) => p.needsUserDecision).length,
+                    potentialDuplicates: dedupeReport.review.length,
+                    autoInsertCandidates: dedupeReport.autoInsert.length,
+                },
+                status: "DRY_RUN",
+                updatedAt: new Date(),
+            },
+            $setOnInsert: { entity, fileHash, createdAt: new Date() },
+        },
+        { new: true, upsert: true }
+    );
 
     return NextResponse.json({
         importId: String(sessionDoc._id),
         sheet: wb.SheetNames[0],
         headers: normalizedHeaders,
-        schemaStatus: activeProfile
-            ? "USING_EXISTING_STANDARD"
-            : "COLD_START_WILL_LEARN",
+        schemaStatus: activeProfile ? "USING_EXISTING_STANDARD" : "COLD_START_WILL_LEARN",
         mapping: proposals,
         duplicates: {
             autoInsert: dedupeReport.autoInsert.slice(0, 50),
             review: dedupeReport.review.slice(0, 200),
         },
     });
+
 }
