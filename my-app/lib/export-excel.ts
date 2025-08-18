@@ -23,20 +23,15 @@ export function exportToXlsx<T extends Row>(
     opts?: {
         fileName?: string;
         sheetName?: string;
-        headerOrder?: string[];          // optional explicit column order
-        bookType?: BookType;             // default 'xlsx'
+        headerOrder?: string[];
+        bookType?: BookType;             // 'xlsx' | 'csv' | ...
     }
 ) {
     const fileName = (opts?.fileName ?? "export") + "." + (opts?.bookType ?? "xlsx");
     const sheetName = opts?.sheetName ?? "Data";
 
-    // Flatten & gather headers
     const flattened = rows.map(r => flattenRecord(r));
-    const headers =
-        opts?.headerOrder ??
-        Array.from(new Set(flattened.flatMap(r => Object.keys(r))));
-
-    // Re-map rows to consistent header order
+    const headers = opts?.headerOrder ?? Array.from(new Set(flattened.flatMap(r => Object.keys(r))));
     const normalized = flattened.map(r =>
         headers.reduce((acc, h) => {
             acc[h] = r[h] ?? "";
@@ -44,21 +39,38 @@ export function exportToXlsx<T extends Row>(
         }, {} as Row)
     );
 
-    // Build worksheet
     const ws = utils.json_to_sheet(normalized, { header: headers, skipHeader: false });
 
-    // Auto-size columns (basic)
     const colWidths = headers.map(h => {
-        const maxLen = Math.max(
-            h.length,
-            ...normalized.map(row => String(row[h] ?? "").length)
-        );
-        return { wch: Math.min(Math.max(maxLen + 2, 8), 60) }; // clamp width
+        const maxLen = Math.max(h.length, ...normalized.map(row => String(row[h] ?? "").length));
+        return { wch: Math.min(Math.max(maxLen + 2, 8), 60) };
     });
     (ws as any)["!cols"] = colWidths;
 
-    // Workbook -> file download
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, sheetName);
     writeFile(wb, fileName, { bookType: opts?.bookType ?? "xlsx" });
+}
+
+/** Small helper just for the Warehouse sheet with a merged title row. */
+export function exportWarehouseSheet(
+    data: Array<{ "No.": number; "ETA": any; "Description": any; "Qty (container)": any }>,
+    opts?: { fileName?: string; title?: string }
+) {
+    const title = opts?.title ?? "Incoming Shipments (Containers)";
+    const headers = ["No.", "ETA", "Description", "Qty (container)"];
+
+    // Build with AOA to allow merge + custom header placement
+    const ws = utils.aoa_to_sheet([[title], headers]);
+    // Merge A1:D1
+    (ws as any)["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
+    // Column widths
+    (ws as any)["!cols"] = [{ wch: 6 }, { wch: 18 }, { wch: 40 }, { wch: 16 }];
+
+    // Put data starting at A3
+    utils.sheet_add_json(ws, data, { origin: "A3", skipHeader: true });
+
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, "Incoming Shipments");
+    writeFile(wb, `${opts?.fileName ?? "shipments_warehouse"}.xlsx`);
 }

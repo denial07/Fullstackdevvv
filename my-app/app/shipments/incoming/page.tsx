@@ -1,7 +1,10 @@
 // app/(your-folder)/incoming/page.tsx
 "use client";
 
+import * as React from "react";
 import { useEffect, useState } from "react";
+import Link from "next/link";
+
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
@@ -9,13 +12,25 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table as UiTable, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
   ArrowLeft, Search, Filter, Download, Ship, Clock, AlertTriangle,
 } from "lucide-react";
-import Link from "next/link";
 import { UserNav } from "@/components/user-nav";
+
+import ExportMenu from "@/components/ExportMenu";
+
+import {
+  useReactTable,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  type ColumnDef,
+} from "@tanstack/react-table";
+
+/** -------- helpers/types -------- */
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -28,64 +43,67 @@ const getStatusColor = (status: string) => {
   }
 };
 
+// Fully dynamic row type (derived at runtime from your fetched data)
+type Row = Record<string, unknown>;
+
+// Your column model used for rendering + editing + export mapping
+type ColumnSpec = {
+  key: string;      // may be "a|b|c" (composite)
+  label: string;
+  width?: string;
+};
+
+// You referenced this in your add-column logic — keeping it here
+function getDefaultValueFromType(t: string) {
+  switch (t) {
+    case "number": return 0;
+    case "boolean": return false;
+    case "date": return new Date().toISOString().slice(0, 10);
+    case "string":
+    default: return "";
+  }
+}
+
+/** -------- page component -------- */
+
 export default function IncomingShipmentsPage() {
-  const [shipments, setShipments] = useState<any[]>([]);
-  const [columns, setColumns] = useState<any[]>([]);
+  // dynamic data & columns
+  const [shipments, setShipments] = useState<Row[]>([]);
+  const [columns, setColumns] = useState<ColumnSpec[]>([]);
+
+  // ui states
   const [draggedColIndex, setDraggedColIndex] = useState<number | null>(null);
-  const [editingCell, setEditingCell] = useState<{ id: string, key: string } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ id: string; key: string } | null>(null);
   const [tempValue, setTempValue] = useState<string>("");
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
   const [editingColumnLabel, setEditingColumnLabel] = useState<string>("");
   const [newColumn, setNewColumn] = useState("");
   const [newColumnType, setNewColumnType] = useState("string");
 
-
-
-
-
-  // useEffect(() => {
-  //   fetch("/api/shipments")
-  //     .then((res) => res.json())
-  //     .then((data) => {
-  //       if (!data.length) return;
-
-  //       const allKeys = new Set<string>();
-  //       data.forEach((s: any) => Object.keys(s).forEach(k => allKeys.add(k)));
-
-  //       const inferredColumns = Array.from(allKeys).map((key) => ({
-  //         key,
-  //         label: key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
-  //         width: "w-32"
-  //       }));
-
-  //       setColumns(inferredColumns);
-  //       setShipments(data);
-  //     });
-  // }, []);
-
+  // fetch + infer columns, then (optionally) normalize labels via your API
   useEffect(() => {
     const loadShipments = async () => {
       const res = await fetch("/api/shipments");
-      const data = await res.json();
+      const data: Row[] = await res.json();
       if (!data.length) return;
 
       const allKeys = Array.from(new Set(data.flatMap(Object.keys)));
 
-      // Call server-side Gemini normalizer
+      // optional server-side alias map (label -> raw key(s))
       const aliasRes = await fetch("/api/normalize-columns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ columns: allKeys }),
       });
 
-      const aliasMap = await aliasRes.json() as Record<string, string>;
+      // expected shape: { "ETA": "eta", "Description": ["desc","description"], ... }
+      const aliasMap = (await aliasRes.json()) as Record<string, string | string[]>;
 
-      const inferredColumns = Object.entries(aliasMap).map(([label, rawKeys]) => ({
-        key: Array.isArray(rawKeys) ? rawKeys.join("|") : rawKeys, // composite key used for merging
+      const inferredColumns: ColumnSpec[] = Object.entries(aliasMap).map(([label, raw]) => ({
+        key: Array.isArray(raw) ? raw.join("|") : raw, // composite key to support merging values
         label,
         width: "min-w-[200px]",
       }));
-
 
       setColumns(inferredColumns);
       setShipments(data);
@@ -94,6 +112,37 @@ export default function IncomingShipmentsPage() {
     loadShipments();
   }, []);
 
+  /** ----- column defs for TanStack (built from your ColumnSpec) ----- */
+  const columnDefs = React.useMemo<ColumnDef<Row>[]>(() => {
+    const defs: ColumnDef<Row>[] = columns.map((c) => ({
+      id: c.key,
+      header: c.label || c.key,
+      accessorFn: (row) => {
+        // support composite "a|b|c": pick first non-empty
+        if (c.key.includes("|")) {
+          const parts = c.key.split("|");
+          const val = parts
+            .map((k) => (row as any)[k])
+            .find((v) => v !== undefined && v !== null && v !== "");
+          return val ?? "";
+        }
+        return (row as any)[c.key];
+      },
+    }));
+    return defs;
+  }, [columns]);
+
+  /** ----- TanStack table instance (used by ExportMenu) ----- */
+  const tableInstance = useReactTable<Row>({
+    data: shipments,
+    columns: columnDefs,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
+
+  /** ----- column header edit helpers ----- */
   const handleEditColumn = (col: { key: string; label: string }) => {
     setEditingColumn(col.key);
     setEditingColumnLabel(col.label);
@@ -101,7 +150,6 @@ export default function IncomingShipmentsPage() {
 
   const handleSaveColumnLabel = async (oldKey: string) => {
     const newKey = editingColumnLabel.trim();
-
     if (!newKey || newKey === oldKey) {
       setEditingColumn(null);
       return;
@@ -120,25 +168,29 @@ export default function IncomingShipmentsPage() {
         throw new Error("Rename failed");
       }
 
-
-      // Update column list in UI
-      setColumns(prev =>
-        prev.map(col =>
-          col.key === oldKey ? { ...col, key: newKey, label: newKey } : col
-        )
+      setColumns((prev) =>
+        prev.map((col) => (col.key === oldKey ? { ...col, key: newKey, label: newKey } : col))
       );
-    } catch (error) {
-      console.error("Rename error:", error);
+    } catch (err) {
+      console.error("Rename error:", err);
       alert("Failed to rename column.");
     } finally {
       setEditingColumn(null);
     }
   };
 
+  function getRowKey(row: Row, index: number): string {
+    const cand =
+      (row as any)._id ??
+      (row as any).id ??
+      (row as any).trackingNumber ??
+      (row as any).uuid;
+    return cand != null ? String(cand) : `row-${index}`;
+  }
 
   const handleDeleteColumn = async (key: string) => {
-    const confirmDelete = window.confirm(`Are you sure you want to delete column "${key}" from all shipments?`);
-    if (!confirmDelete) return;
+    const ok = window.confirm(`Are you sure you want to delete column "${key}" from all shipments?`);
+    if (!ok) return;
 
     try {
       const res = await fetch("/api/shipments", {
@@ -146,31 +198,25 @@ export default function IncomingShipmentsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ columnKey: key }),
       });
-
       if (!res.ok) throw new Error("Failed to delete column");
-
-      // Remove from columns array
-      setColumns(prev => prev.filter(col => col.key !== key));
-    } catch (error) {
-      console.error("Delete column error:", error);
+      setColumns((prev) => prev.filter((c) => c.key !== key));
+    } catch (err) {
+      console.error("Delete column error:", err);
       alert("Failed to delete column.");
     }
   };
 
   const handleAddColumn = async () => {
-    console.log("🔔 Add column triggered");
-
     if (!newColumn.trim()) return;
-
     const newColKey = newColumn.trim().toLowerCase().replace(/\s+/g, "_");
 
-    const newCol = {
+    const newCol: ColumnSpec = {
       key: newColKey,
       label: newColumn.trim(),
-      width: "w-32"
+      width: "w-32",
     };
 
-    // Optimistically update UI
+    // optimistic UI
     setColumns((prev) => [...prev, newCol]);
     setNewColumn("");
 
@@ -180,40 +226,30 @@ export default function IncomingShipmentsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           columnKey: newColKey,
-          columnType: newColumnType // 👈 from dropdown
+          columnType: newColumnType,
         }),
       });
 
-      const data = await res.json();
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Failed to add column");
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to add column");
-      }
+      const defaultValue = getDefaultValueFromType(newColumnType);
 
-      const defaultValue = getDefaultValueFromType(newColumnType); // 👈 local fallback
-
-      // Add new property to each shipment
       setShipments((prev) =>
         prev.map((s) => ({
           ...s,
           [newColKey]: s[newColKey] ?? defaultValue,
         }))
       );
-    } catch (error) {
-      console.error("❌ Error adding column:", error);
-      alert("Error adding column: " + (error as Error).message);
+    } catch (err) {
+      console.error("❌ Error adding column:", err);
+      alert("Error adding column: " + (err as Error).message);
     }
   };
 
-
-
-
-
-
-  const handleEdit = async (id: string, key: string, value: any) => {
-    setShipments((prev) =>
-      prev.map((s) => (s._id === id ? { ...s, [key]: value } : s))
-    );
+  /** ----- cell edit + persistence ----- */
+  const handleEdit = async (id: string, key: string, value: unknown) => {
+    setShipments((prev) => prev.map((s) => (s._id === id ? { ...s, [key]: value } : s)));
 
     await fetch(`/api/shipments/${id}`, {
       method: "PATCH",
@@ -222,6 +258,7 @@ export default function IncomingShipmentsPage() {
     });
   };
 
+  /** ----- drag reorder (UI only) ----- */
   const handleDragStart = (index: number) => setDraggedColIndex(index);
   const handleDragOver = (e: React.DragEvent<HTMLTableCellElement>) => e.preventDefault();
   const handleDrop = (index: number) => {
@@ -233,88 +270,63 @@ export default function IncomingShipmentsPage() {
     setDraggedColIndex(null);
   };
 
-  // const renderCellContent = (shipment: any, key: string) => {
-  //   const value = shipment[key];
+  /** ----- render helpers ----- */
+  const renderCellContent = (shipment: Row, key: string) => {
+    const value = (shipment as any)[key];
+    const isEditing = editingCell?.id === (shipment as any)._id && editingCell?.key === key;
 
-  //   if (key === "value") return value?.toLocaleString() ?? "-";
-  //   if (key === "status") return <Badge variant={getStatusColor(value)}>{value}</Badge>;
-  //   if (key === "delay") return value > 0 ? (
-  //     <span className="text-red-600 font-medium">{value}</span>
-  //   ) : <span className="text-green-600">0</span>;
-
-  //   const editable = key !== "delay" && key !== "trackingNumber" && key !== "id";
-
-  //   if (editable) {
-  //     return (
-  //       <input
-  //         className="bg-transparent border-b border-gray-300 focus:outline-none focus:border-black w-full"
-  //         defaultValue={value ?? ""}
-  //         onBlur={(e) => handleEdit(shipment._id, key, e.target.value)}
-  //       />
-  //     );
-  //   }
-
-  //   return value ?? "-";
-  // };
-
-  const renderCellContent = (shipment: any, key: string) => {
-    const value = shipment[key];
-    const isEditing = editingCell?.id === shipment._id && editingCell?.key === key;
-
-    // Fields you don't want editable
     const nonEditableFields = ["_id", "id", "trackingNumber", "delay"];
     const editable = !nonEditableFields.includes(key) && typeof value !== "object";
 
     if (key.includes("|")) {
       const mergedKeys = key.split("|");
-      const mergedValue = mergedKeys.map(k => shipment[k]).find(v => v != null && v !== "") ?? "-";
-      return mergedValue;
+      const mergedValue = mergedKeys
+        .map((k) => (shipment as any)[k])
+        .find((v) => v != null && v !== "");
+      return mergedValue ?? "-";
     }
 
-    // Format special fields (outside edit mode only)
     if (!isEditing) {
       if (key === "value") {
         return value ? `S$${Number(value).toLocaleString("en-SG")}` : "-";
       }
-
       if (key === "status") {
-        return <Badge variant={getStatusColor(value)}>{value}</Badge>;
+        return <Badge variant={getStatusColor(String(value))}>{String(value)}</Badge>;
       }
-
       if (key === "delay") {
-        return value > 0 ? (
-          <span className="text-red-600 font-medium">{value}</span>
+        return Number(value) > 0 ? (
+          <span className="text-red-600 font-medium">{String(value)}</span>
         ) : (
           <span className="text-green-600">0</span>
         );
       }
     }
 
-    // Fallback: Not editable, just display
     if (!editable) {
       if (typeof value === "object" && value !== null) {
-        return <pre className="text-xs text-gray-600">{JSON.stringify(value, null, 2)}</pre>; // or just display [object]
+        return <pre className="text-xs text-gray-600">{JSON.stringify(value, null, 2)}</pre>;
       }
       return value ?? "-";
     }
 
-    // Editable field logic
     return (
       <div className="relative group">
         {!isEditing ? (
           <div className="flex items-center justify-between group">
             <span className="truncate">
-              {typeof value === "object" && value !== null
-                ? <pre className="text-xs text-gray-600">{JSON.stringify(value, null, 2)}</pre>
-                : value ?? "-"}
+              {typeof value === "object" && value !== null ? (
+                <pre className="text-xs text-gray-600">{JSON.stringify(value, null, 2)}</pre>
+              ) : (
+                value ?? "-"
+              )}
             </span>
             <Button
               size="icon"
               variant="ghost"
               className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={() => {
-                setEditingCell({ id: shipment._id, key });
-                setTempValue(value ?? "");
+                setEditingCell({ id: String((shipment as any)._id), key });
+                setTempValue(String(value ?? ""));
               }}
               title="Edit"
             >
@@ -332,19 +344,14 @@ export default function IncomingShipmentsPage() {
             <Button
               size="sm"
               onClick={() => {
-                handleEdit(shipment._id, key, tempValue);
+                handleEdit(String((shipment as any)._id), key, tempValue);
                 setEditingCell(null);
               }}
               title="Confirm"
             >
               ✅
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setEditingCell(null)}
-              title="Cancel"
-            >
+            <Button size="sm" variant="outline" onClick={() => setEditingCell(null)} title="Cancel">
               ❌
             </Button>
           </div>
@@ -353,12 +360,25 @@ export default function IncomingShipmentsPage() {
     );
   };
 
+  /** ----- quick metrics ----- */
+  const totalValue = shipments.reduce((sum, s) => sum + (Number((s as any).value) || 0), 0);
+  const delayed = shipments.filter((s) => (s as any).status === "Delayed").length;
+  const inTransit = shipments.filter((s) => (s as any).status === "In Transit").length;
+  const arrived = shipments.filter((s) => (s as any).status === "Arrived").length;
 
+  /** ----- example: top toolbar with Export ----- */
+  // Place this where you render your header/toolbar:
+  // <div className="flex items-center justify-between">
+  //   {/* your filters/search here */}
+  //   <ExportMenu
+  //     table={tableInstance}
+  //     fileNameBase="shipments"
+  //     warehouseMap={{ eta: "eta", description: "description", qty: "qty" }}
+  //   />
+  // </div>
 
-  const totalValue = shipments.reduce((sum, s) => sum + (s.value || 0), 0);
-  const delayed = shipments.filter((s) => s.status === "Delayed").length;
-  const inTransit = shipments.filter((s) => s.status === "In Transit").length;
-  const arrived = shipments.filter((s) => s.status === "Arrived").length;
+  // ...continue with your JSX below
+
 
 
   return (
@@ -378,9 +398,12 @@ export default function IncomingShipmentsPage() {
               </div>
             </div>
             <div className="flex space-x-2">
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" /> Export
-              </Button>
+                <ExportMenu
+                  rows={shipments}                // 👈 your data
+                  columnSpecs={columns}           // 👈 your dynamic columns [{ key, label }]
+                  fileNameBase="shipments"
+                  warehouseMap={{ eta: "eta", description: "description", qty: "qty" }}
+                />
               <Button size="sm">Log Incoming</Button>
               <UserNav />
             </div>
@@ -440,7 +463,7 @@ export default function IncomingShipmentsPage() {
           <CardHeader><CardTitle>All Incoming Shipments</CardTitle><CardDescription>Raw material shipments from overseas vendors</CardDescription></CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <Table>
+              <UiTable>
                 <TableHeader>
                   <TableRow>
                     {columns.map((col, index) => (
@@ -489,23 +512,30 @@ export default function IncomingShipmentsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {shipments.map((shipment) => (
-                    <TableRow key={shipment._id} className="hover:bg-gray-100 cursor-pointer">
-                      {columns.map((col) => (
-                        <TableCell key={`${shipment._id}-${col.key}`} className={col.width}>
-                          {renderCellContent(shipment, col.key)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
+                  {shipments.map((shipment, i) => {
+                    const rk = getRowKey(shipment, i);
+
+                    return (
+                      <TableRow key={rk} className="hover:bg-gray-100 cursor-pointer">
+                        {columns.map((col) => (
+                          <TableCell key={`${rk}-${col.key}`} className={col.width}>
+                            {renderCellContent(shipment, col.key)}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
-              </Table>
+
+              </UiTable>
             </div>
           </CardContent>
         </Card>
       </main>
     </div>
   );
+
+
 }
 function inferLocalDefaultValue(newColKey: string) {
   // Guess a default value based on the column key
@@ -517,18 +547,5 @@ function inferLocalDefaultValue(newColKey: string) {
   if (/tracking/i.test(newColKey)) return "";
   return "";
 }
-function getDefaultValueFromType(newColumnType: string) {
-  switch (newColumnType) {
-    case "string":
-      return "";
-    case "number":
-      return 0;
-    case "boolean":
-      return false;
-    case "date":
-      return new Date().toISOString().slice(0, 10); // e.g. "2024-06-09"
-    default:
-      return "";
-  }
-}
+
 

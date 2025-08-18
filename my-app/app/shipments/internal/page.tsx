@@ -1,4 +1,4 @@
-// app/outgoing-shipments/page.tsx
+// app/internal-shipments/page.tsx
 import { connectToDatabase } from "@/lib/mongodb";
 import Shipment from "@/lib/models/Shipment";
 import {
@@ -31,11 +31,11 @@ const getStatusColor = (status: string) => {
   }
 };
 
-export default async function OutgoingShipmentsPage() {
+export default async function InternalShipmentsPage() {
   await connectToDatabase();
-  const rawShipments = await Shipment.find({ type: "outgoing" }).lean();
+  const rawShipments = await Shipment.find({ type: "internal" }).lean();
 
-  const outgoingShipments = rawShipments.map((s: any) => ({
+  const internalShipments = rawShipments.map((s: any) => ({
     id: s.id,
     customer: s.customer,
     status: s.status,
@@ -51,12 +51,12 @@ export default async function OutgoingShipmentsPage() {
     address: s.address,
   }));
 
-  const totalValue = outgoingShipments.reduce((sum, shipment) => sum + shipment.value, 0);
-  const deliveredShipments = outgoingShipments.filter((s) => s.status === "Delivered").length;
-  const inTransitShipments = outgoingShipments.filter(
+  const totalValue = internalShipments.reduce((sum, shipment) => sum + shipment.value, 0);
+  const deliveredShipments = internalShipments.filter((s) => s.status === "Delivered").length;
+  const inTransitShipments = internalShipments.filter(
     (s) => s.status === "In Transit" || s.status === "Loading"
   ).length;
-  const preparingShipments = outgoingShipments.filter(
+  const preparingShipments = internalShipments.filter(
     (s) => s.status === "Preparing" || s.status === "Scheduled"
   ).length;
 
@@ -74,7 +74,7 @@ export default async function OutgoingShipmentsPage() {
                 </Link>
               </Button>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Outgoing Shipments</h1>
+                <h1 className="text-3xl font-bold text-gray-900">Internal Shipments</h1>
                 <p className="text-gray-600">Pallet deliveries to customers</p>
               </div>
             </div>
@@ -94,11 +94,11 @@ export default async function OutgoingShipmentsPage() {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Outgoing</CardTitle>
+              <CardTitle className="text-sm font-medium">Total Internal</CardTitle>
               <Truck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{outgoingShipments.length}</div>
+              <div className="text-2xl font-bold">{internalShipments.length}</div>
             </CardContent>
           </Card>
 
@@ -162,10 +162,10 @@ export default async function OutgoingShipmentsPage() {
           </CardContent>
         </Card>
 
-        {/* Outgoing Shipments Table */}
+        {/* Internal Shipments Table */}
         <Card>
           <CardHeader>
-            <CardTitle>All Outgoing Shipments</CardTitle>
+            <CardTitle>All Internal Shipments</CardTitle>
             <CardDescription>Pallet deliveries to customers across Singapore</CardDescription>
           </CardHeader>
           <CardContent>
@@ -188,7 +188,7 @@ export default async function OutgoingShipmentsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {outgoingShipments.map((shipment) => (
+                  {internalShipments.map((shipment) => (
                     <TableRow key={shipment.id}>
                       <TableCell className="font-medium">{shipment.id}</TableCell>
                       <TableCell>{shipment.customer}</TableCell>
