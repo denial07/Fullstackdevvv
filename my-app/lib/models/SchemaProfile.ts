@@ -1,23 +1,26 @@
-import mongoose from "mongoose";
+// lib/models/SchemaProfile.ts (excerpt)
+import mongoose, { Schema } from "mongoose";
 
-const FieldSchema = new mongoose.Schema({
-    name: { type: String, required: true },     // canonical field name
-    type: { type: String, required: true },     // "string" | "number" | "integer" | "date" | "boolean"
-    aliases: { type: [String], default: [] },   // observed header aliases
-});
+const FieldSchema = new Schema({
+    name: { type: String, required: true },
+    type: { type: String, enum: ["string", "number", "integer", "date", "boolean"], default: "string" },
+    aliases: { type: [String], default: [] },
+}, { _id: false });
 
-const SchemaProfileSchema = new mongoose.Schema(
-    {
-        entity: { type: String, required: true }, // e.g., "Shipment"
-        version: { type: Number, default: 1 },
-        fields: { type: [FieldSchema], default: [] },
-        active: { type: Boolean, default: true },
-    },
-    { timestamps: true }
+const SchemaProfileSchema = new Schema({
+    entity: { type: String, required: true, index: true },  // store lowercased
+    version: { type: Number, default: 1 },
+    active: { type: Boolean, default: true, index: true },
+    fields: { type: [FieldSchema], default: [] },
+    createdAt: Date,
+    updatedAt: Date,
+}, { collection: "schemaprofiles" });
+
+// ensure only ONE active per entity
+SchemaProfileSchema.index(
+    { entity: 1, active: 1 },
+    { unique: true, partialFilterExpression: { active: true } }
 );
 
-const SchemaProfile =
-    mongoose.models.SchemaProfile ||
-    mongoose.model("SchemaProfile", SchemaProfileSchema);
-
-export default SchemaProfile;
+export default mongoose.models.SchemaProfile
+    || mongoose.model("SchemaProfile", SchemaProfileSchema);

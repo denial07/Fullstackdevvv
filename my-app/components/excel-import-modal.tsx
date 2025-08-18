@@ -169,9 +169,9 @@ export function ExcelImportModal({ isOpen, onClose, onSuccess }: ExcelImportModa
                   <div className="space-y-2">
                     <Progress value={uploadProgress} className="h-2" />
                     <p className="text-sm text-gray-500">
-                      {uploadProgress < 30 ? "Uploading file..." : 
-                       uploadProgress < 70 ? "Processing..." : 
-                       "Importing data..."}
+                      {uploadProgress < 30 ? "Uploading file..." :
+                        uploadProgress < 70 ? "Processing..." :
+                          "Importing data..."}
                     </p>
                   </div>
                 ) : (
@@ -188,19 +188,16 @@ export function ExcelImportModal({ isOpen, onClose, onSuccess }: ExcelImportModa
 
           {/* Import Results */}
           {importResult && (
-            <div className={`p-4 rounded-lg border ${
-              importResult.success 
-                ? 'bg-green-50 border-green-200' 
+            <div className={`p-4 rounded-lg border ${importResult.success
+                ? 'bg-green-50 border-green-200'
                 : 'bg-red-50 border-red-200'
-            }`}>
-              <h4 className={`font-medium mb-2 ${
-                importResult.success ? 'text-green-800' : 'text-red-800'
               }`}>
+              <h4 className={`font-medium mb-2 ${importResult.success ? 'text-green-800' : 'text-red-800'
+                }`}>
                 {importResult.success ? '✅ Import Successful!' : '❌ Import Failed'}
               </h4>
-              <p className={`text-sm ${
-                importResult.success ? 'text-green-700' : 'text-red-700'
-              }`}>
+              <p className={`text-sm ${importResult.success ? 'text-green-700' : 'text-red-700'
+                }`}>
                 {importResult.message}
               </p>
               {importResult.success && (
@@ -235,9 +232,9 @@ export function ExcelImportModal({ isOpen, onClose, onSuccess }: ExcelImportModa
             {isUploading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {uploadProgress < 30 ? "Uploading..." : 
-                 uploadProgress < 70 ? "Processing..." : 
-                 "Importing..."}
+                {uploadProgress < 30 ? "Uploading..." :
+                  uploadProgress < 70 ? "Processing..." :
+                    "Importing..."}
               </>
             ) : importResult?.success ? (
               "Import Complete"

@@ -42,7 +42,7 @@ export default async function ShipmentsPage() {
   }> = await res.json();
 
   // 2) Now filter client-safe JSON
-  const incoming = shipments.filter((s) => s.type === "incoming");
+  const incoming = shipments;
   const outgoing = shipments.filter((s) => s.type === "outgoing");
   const incomingTotal = incoming.length;
   const outgoingTotal = outgoing.length;

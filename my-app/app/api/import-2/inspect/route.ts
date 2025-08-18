@@ -19,40 +19,33 @@ const normalizeHeader = (h: string) =>
 
 export async function POST(req: NextRequest) {
     try {
-        // ---- read form/file ----
         const form = await req.formData();
         const file = form.get("file") as File | null;
-        const entity = String(form.get("entity") ?? "Shipment");
-
+        const entity = String(form.get("entity") ?? "Shipment").trim().toLowerCase();
         if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
 
         const buf = Buffer.from(await file.arrayBuffer());
         const fileHash = crypto.createHash("sha256").update(buf).digest("hex");
 
-        // ---- parse workbook ----
         const wb = XLSX.read(buf, { type: "buffer" });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, {
-            defval: null,
-            raw: true,
-        });
-        if (rows.length === 0)
-            return NextResponse.json({ error: "Empty sheet" }, { status: 400 });
+        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: null, raw: true });
+        if (rows.length === 0) return NextResponse.json({ error: "Empty sheet" }, { status: 400 });
 
         const headers = Object.keys(rows[0] ?? {});
         const normalizedHeaders = headers.map(normalizeHeader);
 
-        // ---- schema profile (cold start vs existing) ----
         await connectToDatabase();
 
+        // 👇 case-insensitive lookup so existing docs are found regardless of casing
         type ProfileField = { name: string; type: FieldDef["type"]; aliases?: string[] };
-        const activeProfile = (await SchemaProfile
-            .findOne({ entity, active: true })
-            .lean()) as { fields?: ProfileField[] } | null;
+        const activeProfile = (await SchemaProfile.findOne({
+            active: true,
+            entity: { $regex: new RegExp(`^${entity}$`, "i") }
+        }).lean()) as { fields?: ProfileField[] } | null;
 
         let fieldDefs: FieldDef[] = [];
-        if (!activeProfile?.fields || activeProfile.fields.length === 0) {
-            // Cold start — infer types from first ~200 rows
+        if (!activeProfile?.fields?.length) {
             const { inferColumnType } = await import("@/lib/import/type-infer");
             fieldDefs = normalizedHeaders.map((nh, i) => {
                 const samples = rows.slice(0, 200).map((r) => r[headers[i]]);
@@ -60,7 +53,6 @@ export async function POST(req: NextRequest) {
                 return { name: nh, type, aliases: [] };
             });
         } else {
-            // Use existing schema profile
             fieldDefs = activeProfile.fields.map((f) => ({
                 name: f.name,
                 type: f.type,
@@ -68,31 +60,21 @@ export async function POST(req: NextRequest) {
             }));
         }
 
-        // ---- build 50-row sample for header/type inference ----
+        // build small sample for heuristics
         const sampleRows = rows.slice(0, 50).map((r) => {
             const obj: Record<string, any> = {};
-            headers.forEach((h, i) => {
-                obj[normalizedHeaders[i]] = r[h];
-            });
+            headers.forEach((h, i) => (obj[normalizedHeaders[i]] = r[h]));
             return obj;
         });
 
-        // initial proposals (heuristics)
         const proposals = proposeHeaderMapping(normalizedHeaders, sampleRows, fieldDefs);
 
-        // ---- AI assist only for unresolved columns ----
-        const ambiguous = proposals
-            .filter((p) => p.needsUserDecision)
-            .map((p) => p.incoming);
-
-        if (ambiguous.length > 0) {
-            // build scrubbed samples keyed by original, then remap to normalized
+        // LLM assist only for unresolved
+        const ambiguous = proposals.filter((p) => p.needsUserDecision).map((p) => p.incoming);
+        if (ambiguous.length) {
             const samplesByHeader = buildScrubbedSamples(rows, headers);
             const samplesByNormalized: Record<string, string[]> = {};
-            normalizedHeaders.forEach((nh, i) => {
-                const original = headers[i];
-                samplesByNormalized[nh] = samplesByHeader[original] || [];
-            });
+            normalizedHeaders.forEach((nh, i) => (samplesByNormalized[nh] = samplesByHeader[headers[i]] || []));
 
             const aiPicks = await geminiSuggestMappings({
                 incomingHeaders: ambiguous,
@@ -100,43 +82,28 @@ export async function POST(req: NextRequest) {
                 samplesByHeader: samplesByNormalized,
             });
 
-            const AI_AUTOMAP_THRESHOLD = 0.95; // both ≥95%
+            const TH = 0.95;
             for (const pick of aiPicks) {
                 const idx = proposals.findIndex((p) => p.incoming === pick.incoming);
                 if (idx === -1) continue;
-
                 if (pick.mapTo) {
-                    // merge/raise confidences
                     proposals[idx].bestMatch = pick.mapTo;
-                    proposals[idx].nameConfidence = Math.max(
-                        proposals[idx].nameConfidence ?? 0,
-                        pick.nameConfidence ?? 0
-                    );
-                    proposals[idx].typeConfidence = Math.max(
-                        proposals[idx].typeConfidence ?? 0,
-                        pick.typeConfidence ?? 0
-                    );
-
-                    const ok =
-                        (proposals[idx].nameConfidence ?? 0) >= AI_AUTOMAP_THRESHOLD &&
-                        (proposals[idx].typeConfidence ?? 0) >= AI_AUTOMAP_THRESHOLD;
-
+                    proposals[idx].nameConfidence = Math.max(proposals[idx].nameConfidence ?? 0, pick.nameConfidence ?? 0);
+                    proposals[idx].typeConfidence = Math.max(proposals[idx].typeConfidence ?? 0, pick.typeConfidence ?? 0);
+                    const ok = (proposals[idx].nameConfidence ?? 0) >= TH && (proposals[idx].typeConfidence ?? 0) >= TH;
                     proposals[idx].autoMapped = ok || proposals[idx].autoMapped;
                     proposals[idx].needsUserDecision = !proposals[idx].autoMapped;
-                    (proposals[idx] as any).byAI = ok; // optional UI badge
-                } else {
-                    // AI couldn't decide — leave for user
-                    proposals[idx].needsUserDecision = true;
+                    (proposals[idx] as any).byAI = ok;
                 }
             }
         }
 
-        // ---- duplicates against current DB (if model exists) ----
+        // duplicates preview
         const Model = getEntityModel(entity);
         const existing = Model ? await Model.find().limit(5000).lean() : [];
         const dedupeReport = buildDuplicateReport(rows, headers, existing);
 
-        // ---- persist a DRY_RUN session for audit/idempotency ----
+        // record a DRY_RUN ImportSession
         const sessionDoc = await ImportSession.findOneAndUpdate(
             { entity, fileHash },
             {
@@ -158,7 +125,6 @@ export async function POST(req: NextRequest) {
             { new: true, upsert: true }
         );
 
-        // ---- response ----
         return NextResponse.json({
             importId: String(sessionDoc._id),
             sheet: wb.SheetNames[0],
