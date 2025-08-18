@@ -28,7 +28,7 @@ export default async function ShipmentsPage() {
 
   const shipments: Array<{
     _id: string;
-    type: "incoming" | "outgoing";
+    type: "incoming" | "internal";
     id: string;
     vendor?: string;
     customer?: string;
@@ -42,12 +42,16 @@ export default async function ShipmentsPage() {
   }> = await res.json();
 
   // 2) Now filter client-safe JSON
-  const incoming = shipments;
-  const outgoing = shipments.filter((s) => s.type === "outgoing");
+  const activeincoming = shipments.filter(s => s.type.toLowerCase() === "incoming" && s.status !== "Delivered");
+  const activeinternal = shipments.filter(s => s.type.toLowerCase() === "internal" && s.status !== "Delivered");
+  const incoming = shipments.filter(s => s.type.toLowerCase() === "incoming");
+  const internal = shipments.filter(s => s.type.toLowerCase() === "internal");
+  const activeIncomingCount = activeincoming.length;
+  const activeInternalCount = activeinternal.length;
   const incomingTotal = incoming.length;
-  const outgoingTotal = outgoing.length;
+  const internalTotal = internal.length;
   const incomingDelayed = incoming.filter((s) => s.status === "Delayed").length;
-  const outgoingPreparing = outgoing.filter((s) => s.status === "Preparing").length;
+  const internalPreparing = internal.filter((s) => s.status === "Preparing").length;
   const totalThisMonth = shipments.filter((s) => {
     const rawDate = s.shippingDate || s.eta;
 
@@ -104,23 +108,23 @@ export default async function ShipmentsPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Incoming Shipments</CardTitle>
+              <CardTitle className="text-sm font-medium">Active Incoming Shipments</CardTitle>
               <Ship className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{incomingTotal}</div>
-              <p className="text-xs text-muted-foreground">{incomingDelayed} delayed</p>
+              <div className="text-2xl font-bold">{activeIncomingCount}</div>
+              <p className="text-xs text-muted-foreground">{incomingTotal} Total Incoming Shipments</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Outgoing Shipments</CardTitle>
+              <CardTitle className="text-sm font-medium">Active Internal Shipments</CardTitle>
               <Truck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{outgoingTotal}</div>
-              <p className="text-xs text-muted-foreground">{outgoingPreparing} preparing</p>
+              <div className="text-2xl font-bold">{activeInternalCount}</div>
+              <p className="text-xs text-muted-foreground">{internalTotal} preparing</p>
             </CardContent>
           </Card>
 
@@ -150,7 +154,7 @@ export default async function ShipmentsPage() {
         <Tabs defaultValue="incoming" className="space-y-6">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="incoming">Incoming Shipments</TabsTrigger>
-            <TabsTrigger value="outgoing">Internal Shipments</TabsTrigger>
+            <TabsTrigger value="internal">Internal Shipments</TabsTrigger>
           </TabsList>
 
           <TabsContent value="incoming">
@@ -180,7 +184,7 @@ export default async function ShipmentsPage() {
           </TabsContent>
 
 
-          <TabsContent value="outgoing">
+          <TabsContent value="internal">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -193,12 +197,12 @@ export default async function ShipmentsPage() {
                 <div className="flex justify-between items-center mb-4">
                   <p className="text-sm text-gray-600">Track customer order deliveries</p>
                   <Button asChild>
-                    <Link href="/shipments/outgoing">View Detailed Internal</Link>
+                    <Link href="/shipments/internal">View Detailed Internal</Link>
                   </Button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {outgoing.map((shipment) => (
+                  {internal.map((shipment) => (
                     <OutgoingShipmentCard key={String(shipment._id)} shipment={shipment} />
                   ))}
                 </div>

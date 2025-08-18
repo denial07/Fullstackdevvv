@@ -23,9 +23,6 @@ export function Navbar() {
               <Link href="/inventory">Inventory</Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/orders">Orders</Link>
-            </Button>
-            <Button variant="outline" asChild>
               <Link href="/inbox">Inbox</Link>
             </Button>
             <UserNav />

@@ -128,13 +128,13 @@ const orderStatusData = [
 ]
 
 const dailyOperationsData = [
-  { day: "Mon", orders: 8, shipments: 5, inventory: 12 },
-  { day: "Tue", orders: 12, shipments: 7, inventory: 8 },
-  { day: "Wed", orders: 15, shipments: 9, inventory: 15 },
-  { day: "Thu", orders: 10, shipments: 6, inventory: 10 },
-  { day: "Fri", orders: 18, shipments: 12, inventory: 20 },
-  { day: "Sat", orders: 6, shipments: 3, inventory: 5 },
-  { day: "Sun", orders: 4, shipments: 2, inventory: 3 },
+  { day: "Mon", shipments: 5, inventory: 12 },
+  { day: "Tue",  shipments: 7, inventory: 8 },
+  { day: "Wed", shipments: 9, inventory: 15 },
+  { day: "Thu",shipments: 6, inventory: 10 },
+  { day: "Fri", shipments: 12, inventory: 20 },
+  { day: "Sat", shipments: 3, inventory: 5 },
+  { day: "Sun", shipments: 2, inventory: 3 },
 ]
 
 const recentShipments = [
@@ -236,14 +236,6 @@ type DashboardProps = {
     expired: number
     totalValue: number
   }
-  ordersSummary: {
-    total: number
-    pending: number
-    paid: number
-    shipped: number
-    delivered: number
-    totalValue: number
-  }
 }
 
 
@@ -301,7 +293,7 @@ export default function DashboardPage() {
 
   if (!data) return null
 
-  const { shipmentSummary, inventorySummary, ordersSummary } = data
+  const { shipmentSummary, inventorySummary } = data
 
   return  (
     <div className="min-h-screen bg-gray-50">
@@ -311,10 +303,10 @@ export default function DashboardPage() {
         {/* Key Metrics */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 mb-8">
 
             {/* Card 1 - Shipments */}
-            <Link href="/metrics/active-shipments">
+            <Link href="/shipments">
               <Card className="border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-slate-900">Active Shipments</CardTitle>
@@ -328,7 +320,7 @@ export default function DashboardPage() {
             </Link>
 
             {/* Card 2 - Inventory */}
-            <Link href="/metrics/inventory-items">
+            <Link href="/inventory">
               <Card className="border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-slate-900">Inventory Items</CardTitle>
@@ -341,52 +333,7 @@ export default function DashboardPage() {
               </Card>
             </Link>
 
-            {/* Card 3 - Orders */}
-            <Link href="/metrics/active-orders">
-              <Card className="border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-slate-900">Active Orders</CardTitle>
-                  <ShoppingCart className="h-4 w-4" style={{ color: colors.warning }} />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-gray-900">{ordersSummary.total}</div>
-                  <p className="text-xs text-slate-500">{ordersSummary.pending} pending payment</p>
-                </CardContent>
-              </Card>
-            </Link>
 
-            {/* Card 4 - Revenue */}
-            <Link href="/metrics/monthly-revenue">
-              <Card className="border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-slate-900">Monthly Revenue</CardTitle>
-                  <DollarSign className="h-4 w-4" style={{ color: colors.secondary }} />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-gray-900">S${ordersSummary.totalValue.toLocaleString()}</div>
-                  <p className="text-xs flex items-center" style={{ color: colors.secondary }}>
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    +12% from last month
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
-
-            {/* Card 5 - Alerts */}
-            <Link href="/metrics/critical-alerts">
-              <Card className="border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-slate-900">Critical Alerts</CardTitle>
-                  <AlertTriangle className="h-4 w-4" style={{ color: colors.accent }} />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {inventorySummary.expiringSoon + inventorySummary.expired}
-                  </div>
-                  <p className="text-xs text-slate-500">Items need attention</p>
-                </CardContent>
-              </Card>
-            </Link>
 
           </div>
         </main>
@@ -394,7 +341,7 @@ export default function DashboardPage() {
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-slate-100">
+          <TabsList className="grid w-full grid-cols-3 bg-slate-100">
             <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:text-black">
               Overview
             </TabsTrigger>
@@ -404,15 +351,13 @@ export default function DashboardPage() {
             <TabsTrigger value="operations" className="data-[state=active]:bg-white data-[state=active]:text-black">
               Operations
             </TabsTrigger>
-            <TabsTrigger value="reports" className="data-[state=active]:bg-white data-[state=active]:text-black">
-              Reports
-            </TabsTrigger>
+
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
 
             {/* Operational Analytics */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="border-slate-200 shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-slate-900">Shipment Status</CardTitle>
@@ -501,47 +446,6 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border-slate-200 shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-slate-900">Order Status</CardTitle>
-                  <CardDescription className="text-slate-600">Payment and shipping status</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-slate-700">Paid & Shipped</span>
-                      <span className="text-sm font-medium text-gray-900">{ordersSummary.shipped}</span>
-                    </div>
-                    <Progress
-                      value={(ordersSummary.shipped / ordersSummary.total) * 100}
-                      className="h-2"
-                      style={{ backgroundColor: colors.neutralLight }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-slate-700">Pending Payment</span>
-                      <span className="text-sm font-medium text-gray-900">{ordersSummary.pending}</span>
-                    </div>
-                    <Progress
-                      value={(ordersSummary.pending / ordersSummary.total) * 100}
-                      className="h-2"
-                      style={{ backgroundColor: colors.neutralLight }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-slate-700">Delivered</span>
-                      <span className="text-sm font-medium text-gray-900">{ordersSummary.delivered}</span>
-                    </div>
-                    <Progress
-                      value={(ordersSummary.delivered / ordersSummary.total) * 100}
-                      className="h-2"
-                      style={{ backgroundColor: colors.neutralLight }}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           </TabsContent>
 
@@ -843,67 +747,6 @@ export default function DashboardPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="reports" className="space-y-6">
-            {/* Recent Orders */}
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-slate-900">Recent Orders</CardTitle>
-                <CardDescription className="text-slate-600">Latest customer orders and their status</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {recentOrders.map((order) => (
-                    <div
-                      key={order.id}
-                      className="flex items-center justify-between p-4 border border-slate-200 rounded-lg bg-white"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-medium text-slate-900">{order.id}</span>
-                          <Badge
-                            style={{
-                              backgroundColor: order.paymentStatus === "Paid" ? colors.secondary : colors.accent,
-                              color: "white",
-                            }}
-                          >
-                            {order.paymentStatus}
-                          </Badge>
-                          <Badge
-                            style={{
-                              backgroundColor:
-                                order.shippingStatus === "Delivered"
-                                  ? colors.secondary
-                                  : order.shippingStatus === "Shipped"
-                                    ? colors.primary
-                                    : colors.warning,
-                              color: "white",
-                            }}
-                          >
-                            {order.shippingStatus}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-slate-600">{order.customer}</p>
-                        <p className="text-xs text-slate-500">{order.items}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium text-slate-900">S${order.value.toLocaleString()}</p>
-                        <p className="text-xs text-slate-500">{order.orderDate}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4">
-                  <Button
-                    asChild
-                    className="w-full"
-                    style={{ backgroundColor: colors.primary, borderColor: colors.primary }}
-                  >
-                    <Link href="/orders">View All Orders</Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
         </Tabs>
       </main>
 

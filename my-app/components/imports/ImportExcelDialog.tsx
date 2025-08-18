@@ -423,7 +423,7 @@ export default function ImportExcelDialog({
                     </div>
 
                     {/* Sticky footer */}
-                    <div className="sticky bottom-0 z-10 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-t px-6 py-4 flex items-center justify-between">
+                    <div className="sticky z-10 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-t px-6 py-4 flex items-baseline justify-between">
                         <span className="text-xs text-muted-foreground">
                             Auto-map only when both name and type confidence ≥95%.
                         </span>
