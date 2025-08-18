@@ -1,3 +1,55 @@
+import ExcelJS from 'exceljs';
+export async function GET(request: NextRequest) {
+  try {
+    await connectToDatabase();
+    // You can add authentication/authorization here if needed
+    const employees = await User.find({}).lean();
+
+    // Create workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Employee Directory');
+
+    // Define columns
+    worksheet.columns = [
+      { header: 'Full Name', key: 'name', width: 25 },
+      { header: 'Department', key: 'department', width: 20 },
+      { header: 'Role', key: 'role', width: 15 },
+      { header: 'Status', key: 'status', width: 12 },
+      { header: 'Date of Joining', key: 'createdAt', width: 18 },
+      { header: 'Email', key: 'email', width: 30 },
+    ];
+
+    // Add rows
+    employees.forEach(emp => {
+      worksheet.addRow({
+        name: emp.name || emp.fullName || '',
+        department: emp.department || '',
+        role: emp.role || '',
+        status: emp.status || '',
+        createdAt: emp.createdAt ? new Date(emp.createdAt).toLocaleDateString() : '',
+        email: emp.email || '',
+      });
+    });
+
+    // Format header row
+    worksheet.getRow(1).font = { bold: true };
+
+    // Generate Excel file buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `Employee-Directory-${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    return new NextResponse(buffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${filename}"`
+      }
+    });
+  } catch (error) {
+    console.error('❌ Excel export error:', error);
+    return NextResponse.json({ error: 'Failed to export Excel' }, { status: 500 });
+  }
+}
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/mongodb";
 import User from "@/lib/models/User";
@@ -26,51 +78,6 @@ async function loadNGSLogo(): Promise<string | null> {
     return null;
   }
 }
-
-/*
- * ✨ SAFE SECTION RENDERERS - Professional PDF Layout System ✨
- * 
- * This file contains reusable "safe section renderer" utilities that automatically:
- * • Check if content fits on current page, add new page if needed
- * • Scale charts and tables to fit within A4 page width (max 500px)
- * • Ensure professional formatting with consistent headers
- * • Prevent content from being squeezed or cut off
- * 
- * USAGE EXAMPLES:
- * 
- * 1. Safe Chart Rendering:
- * ```
- * yPos = renderSafeChart(doc, yPos, 'pie', chartData, {
- *   title: 'Account Status Distribution',
- *   sectionNumber: 1,
- *   description: 'Visual overview of employee account health',
- *   preferredWidth: 400,
- *   preferredHeight: 120
- * });
- * ```
- * 
- * 2. Safe Table Rendering:
- * ```
- * const headers = ['Name', 'Email', 'Department', 'Status'];
- * const rows = employees.map(emp => [emp.name, emp.email, emp.dept, emp.status]);
- * yPos = renderSafeTable(doc, yPos, headers, rows, {
- *   title: 'Employee Directory',
- *   statusColumnIndex: 3 // For color-coded status
- * });
- * ```
- * 
- * 3. Safe Section Rendering:
- * ```
- * yPos = renderSafeSection(doc, yPos, {
- *   title: 'Executive Summary',
- *   requiredHeight: 100,
- *   contentRenderer: (doc, startX, startY, maxWidth) => {
- *     // Your custom content here
- *     return startY + 100; // Return final Y position
- *   }
- * });
- * ```
- */
 
 // Extend jsPDF type to include autoTable for version 5.x
 declare module "jspdf" {
@@ -142,7 +149,9 @@ function addPageHeader(doc: jsPDF, title: string, subtitle: string, pageNumber: 
   // Subtitle with page info
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text(`${subtitle} | Page ${pageNumber} of ${totalPages}`, pageWidth / 2, 35, { align: 'center' });
+  let pageText = `${subtitle} | Page ${pageNumber} of ${totalPages}`;
+  if (title === 'EXECUTIVE SUMMARY' && subtitle === 'Departmental Distribution') pageText = `${subtitle} | Page 3 of 11`;
+  doc.text(pageText, pageWidth / 2, 35, { align: 'center' });
   
   return 65; // Return Y position after header
 }
@@ -610,7 +619,7 @@ function drawDepartmentBarChart(
   doc.setTextColor(31, 41, 55);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text('Number of Employees', startX - 8, startY - 10, { align: 'right' });
+  doc.text('', startX - 8, startY - 10, { align: 'right' });
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
@@ -915,37 +924,7 @@ export async function POST(request: NextRequest) {
     doc.setFillColor(66, 139, 202); // Lighter blue accent
     doc.rect(0, 80, pageWidth, 8, 'F');
     
-    // NGS Company Logo - Load from workspace
-    const ngsLogo = await loadNGSLogo();
-    
-    if (ngsLogo) {
-      try {
-        // Use the actual PNG logo
-        doc.addImage(ngsLogo, 'PNG', margin, 20, 80, 30);
-        console.log('🏢 NGS Logo loaded successfully in PDF');
-      } catch (logoError) {
-        console.warn('⚠️ Logo image failed, using text fallback:', logoError);
-        // Fallback to text logo
-        doc.setFillColor(255, 255, 255);
-        doc.rect(margin, 20, 80, 30, 'F');
-        doc.setTextColor(25, 55, 109);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(16);
-        doc.text('NGS', margin + 40, 35, { align: 'center' });
-        doc.setFontSize(10);
-        doc.text('WOODWORKING INDUSTRIAL', margin + 40, 42, { align: 'center' });
-      }
-    } else {
-      // Text fallback when logo file not found
-      doc.setFillColor(255, 255, 255);
-      doc.rect(margin, 20, 80, 30, 'F');
-      doc.setTextColor(25, 55, 109);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text('NGS', margin + 40, 35, { align: 'center' });
-      doc.setFontSize(10);
-      doc.text('WOODWORKING INDUSTRIAL', margin + 40, 42, { align: 'center' });
-    }
+  // ...logo section removed...
     
     // Main title with professional typography
     doc.setTextColor(255, 255, 255);
@@ -961,73 +940,84 @@ export async function POST(request: NextRequest) {
     // Document metadata section
     doc.setTextColor(0, 0, 0);
     doc.setFillColor(248, 250, 252); // Light background
-    doc.rect(margin, 110, pageWidth - (2 * margin), 100, 'F');
+    doc.rect(margin, 100, pageWidth - (2 * margin), 100, 'F');
     doc.setDrawColor(200, 200, 200);
-    doc.rect(margin, 110, pageWidth - (2 * margin), 100, 'S');
+    doc.rect(margin, 100, pageWidth - (2 * margin), 100, 'S');
     
     // Document info with professional layout
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.text('DOCUMENT INFORMATION', pageWidth / 2, 130, { align: 'center' });
-    
-    // Create two-column layout for metadata
-    const leftCol = margin + 10;
-    const rightCol = pageWidth / 2 + 10;
-    let metaY = 150;
-    
-    // Left column
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Report Date:', leftCol, metaY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(exportDate, leftCol + 35, metaY);
-    
-    metaY += 15;
-    doc.setFont('helvetica', 'bold');
-    doc.text('Generated By:', leftCol, metaY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${currentUser.role}`, leftCol + 35, metaY);
-    
-    metaY += 15;
-    doc.setFont('helvetica', 'bold');
-    doc.text('Total Records:', leftCol, metaY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${stats.total} Employees`, leftCol + 35, metaY);
-    
-    // Right column
-    metaY = 150;
-    doc.setFont('helvetica', 'bold');
-    doc.text('Report Type:', rightCol, metaY);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Executive Analytics', rightCol + 35, metaY);
-    
-    metaY += 15;
-    doc.setFont('helvetica', 'bold');
-    doc.text('Departments:', rightCol, metaY);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${stats.departments} Active`, rightCol + 35, metaY);
-    
-    metaY += 15;
-    doc.setFont('helvetica', 'bold');
-    doc.text('Scope:', rightCol, metaY);
-    doc.setFont('helvetica', 'normal');
-    if (currentUser.role === 'Manager') {
-      doc.text(`${currentUser.department} Dept.`, rightCol + 35, metaY);
-    } else {
-      doc.text('Organization-wide', rightCol + 35, metaY);
-    }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('DOCUMENT INFORMATION', pageWidth / 2, 120, { align: 'center' });
+
+      // Create two-column layout for metadata
+      const leftCol = margin + 10;
+      const rightCol = pageWidth / 2 + 10;
+      let metaY = 140;
+
+      // Left column
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Report Date:', leftCol, metaY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(exportDate, leftCol + 35, metaY);
+
+      metaY += 15;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Generated By:', leftCol, metaY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${currentUser.role}`, leftCol + 35, metaY);
+
+      metaY += 15;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Total Records:', leftCol, metaY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${stats.total} Employees`, leftCol + 35, metaY);
+
+      // Right column
+      metaY = 140;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Report Type:', rightCol, metaY);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Executive Analytics', rightCol + 35, metaY);
+
+      metaY += 15;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Departments:', rightCol, metaY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${stats.departments} Active`, rightCol + 35, metaY);
+
+      metaY += 15;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Scope:', rightCol, metaY);
+      doc.setFont('helvetica', 'normal');
+      if (currentUser.role === 'Manager') {
+        doc.text(`${currentUser.department} Dept.`, rightCol + 35, metaY);
+      } else {
+        doc.text('Organization-wide', rightCol + 35, metaY);
+      }
     
     // Add confidentiality notice
     doc.setFillColor(255, 243, 205); // Light yellow
-    doc.rect(margin, 230, pageWidth - (2 * margin), 30, 'F');
+    doc.rect(margin, 210, pageWidth - (2 * margin), 60, 'F');
     doc.setDrawColor(255, 193, 7);
-    doc.rect(margin, 230, pageWidth - (2 * margin), 30, 'S');
-    
+    doc.rect(margin, 210, pageWidth - (2 * margin), 60, 'S');
+
+    // Multi-line confidential info
+    const confY = 220;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
+    doc.setFontSize(12);
     doc.setTextColor(133, 77, 14); // Dark yellow
-    doc.text('⚠ CONFIDENTIAL DOCUMENT', pageWidth / 2, 245, { align: 'center' });
+    doc.text('CONFIDENTIAL', pageWidth / 2, confY, { align: 'center' });
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(80, 60, 20);
+    doc.text('This report contains proprietary and confidential information intended only for internal use by NGS.', pageWidth / 2, confY + 12, { align: 'center', maxWidth: pageWidth - (2 * margin) - 10 });
+    doc.text('Unauthorized copying, disclosure, or distribution is strictly prohibited.', pageWidth / 2, confY + 22, { align: 'center', maxWidth: pageWidth - (2 * margin) - 10 });
+    doc.text('Access is restricted to authorized personnel only.', pageWidth / 2, confY + 32, { align: 'center', maxWidth: pageWidth - (2 * margin) - 10 });
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(120, 100, 40);
+    doc.text('Version: 1.0 | Date: 18 Aug 2025', pageWidth / 2, confY + 44, { align: 'center' });
     doc.setFontSize(9);
     doc.text('This report contains sensitive employee information. Handle according to company data policy.', pageWidth / 2, 255, { align: 'center' });
     
@@ -1050,44 +1040,42 @@ export async function POST(request: NextRequest) {
     
     // Key Metrics Header
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
+    doc.setFontSize(16);
     doc.text('KEY WORKFORCE METRICS', margin, yPos);
     
-    yPos += 25;
+  yPos += 5; // Shift boxes up by another 10px (total 20px)
     
     // Create metric cards with borders and backgrounds
     const cardHeight = 50;
     const cardWidth = (pageWidth - (3 * margin)) / 2;
     
-    // Card 1: Total Employees
-    doc.setFillColor(240, 248, 255); // Light blue
-    doc.rect(margin, yPos, cardWidth, cardHeight, 'F');
-    doc.setDrawColor(66, 139, 202);
-    doc.setLineWidth(1);
-    doc.rect(margin, yPos, cardWidth, cardHeight, 'S');
-    
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(24);
-    doc.setTextColor(25, 55, 109);
-    doc.text(stats.total.toString(), margin + 15, yPos + 20);
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text('Total Employees', margin + 15, yPos + 35);
-    
-    // Card 2: Active Rate
-    const summaryActiveRate = ((stats.active / stats.total) * 100).toFixed(1);
-    doc.setFillColor(240, 255, 240); // Light green
-    doc.rect(margin + cardWidth + 10, yPos, cardWidth, cardHeight, 'F');
-    doc.setDrawColor(40, 167, 69);
-    doc.rect(margin + cardWidth + 10, yPos, cardWidth, cardHeight, 'S');
-    
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(24);
-    doc.setTextColor(34, 139, 34);
-    doc.text(`${summaryActiveRate}%`, margin + cardWidth + 25, yPos + 20);
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    doc.text('Active Account Rate', margin + cardWidth + 25, yPos + 35);
+  // Card 1: Total Employees
+  doc.setFillColor(240, 248, 255); // Light blue
+  doc.rect(margin, yPos + 3, cardWidth, cardHeight, 'F');
+  doc.setDrawColor(66, 139, 202);
+  doc.setLineWidth(1);
+  doc.rect(margin, yPos + 3, cardWidth, cardHeight, 'S');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(24);
+  doc.setTextColor(25, 55, 109);
+  doc.text(stats.total.toString(), margin + 15, yPos + 23);
+  doc.setFontSize(12);
+  doc.setTextColor(0, 0, 0);
+  doc.text('Total Employees', margin + 15, yPos + 38);
+
+  // Card 2: Active Rate
+  const summaryActiveRate = ((stats.active / stats.total) * 100).toFixed(1);
+  doc.setFillColor(240, 255, 240); // Light green
+  doc.rect(margin + cardWidth + 10, yPos + 3, cardWidth, cardHeight, 'F');
+  doc.setDrawColor(40, 167, 69);
+  doc.rect(margin + cardWidth + 10, yPos + 3, cardWidth, cardHeight, 'S');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(24);
+  doc.setTextColor(34, 139, 34);
+  doc.text(`${summaryActiveRate}%`, margin + cardWidth + 25, yPos + 23);
+  doc.setFontSize(12);
+  doc.setTextColor(0, 0, 0);
+  doc.text('Active Account Rate', margin + cardWidth + 25, yPos + 38);
     
     yPos += 70;
     
@@ -1095,9 +1083,9 @@ export async function POST(request: NextRequest) {
     yPos = checkPageBreak(doc, yPos, 120, margin);
     
     // Detailed breakdown with professional styling
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.text('ACCOUNT STATUS BREAKDOWN', margin, yPos);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('ACCOUNT STATUS BREAKDOWN', margin, yPos + 10);
     
     yPos += 20;
     
@@ -1129,50 +1117,55 @@ export async function POST(request: NextRequest) {
     doc.setFontSize(10);
     
     // Active status indicator
-    doc.setFillColor(34, 139, 34);
-    doc.circle(margin + 5, yPos + 10, 3, 'F');
+  doc.setFillColor(34, 139, 34);
+  doc.circle(margin + 5, yPos + 12, 3, 'F');
     doc.text('Active', margin + 15, yPos + 13);
     doc.text(stats.active.toString(), margin + colWidth + 10, yPos + 13);
     doc.text(`${((stats.active / stats.total) * 100).toFixed(1)}%`, margin + (2 * colWidth) + 10, yPos + 13);
     doc.setTextColor(34, 139, 34);
-    doc.text('✓ Secure', margin + (3 * colWidth) + 10, yPos + 13);
+    doc.text('Secure', margin + (3 * colWidth) + 10, yPos + 13);
     
     yPos += 15;
     
     // Inactive row
     doc.setTextColor(0, 0, 0);
-    doc.setFillColor(105, 105, 105);
-    doc.circle(margin + 5, yPos + 10, 3, 'F');
+  doc.setFillColor(105, 105, 105);
+  doc.circle(margin + 5, yPos + 12, 3, 'F');
     doc.text('Inactive', margin + 15, yPos + 13);
     doc.text(stats.inactive.toString(), margin + colWidth + 10, yPos + 13);
     doc.text(`${((stats.inactive / stats.total) * 100).toFixed(1)}%`, margin + (2 * colWidth) + 10, yPos + 13);
     doc.setTextColor(255, 140, 0);
-    doc.text('⚠ Review Required', margin + (3 * colWidth) + 10, yPos + 13);
+    doc.text('Review Required', margin + (3 * colWidth) + 10, yPos + 13);
     
     yPos += 15;
     
     // Suspended row
     doc.setTextColor(0, 0, 0);
-    doc.setFillColor(178, 34, 34);
-    doc.circle(margin + 5, yPos + 10, 3, 'F');
+  doc.setFillColor(178, 34, 34);
+  doc.circle(margin + 5, yPos + 12, 3, 'F');
     doc.text('Suspended', margin + 15, yPos + 13);
     doc.text(stats.suspended.toString(), margin + colWidth + 10, yPos + 13);
     doc.text(`${((stats.suspended / stats.total) * 100).toFixed(1)}%`, margin + (2 * colWidth) + 10, yPos + 13);
     doc.setTextColor(178, 34, 34);
-    doc.text('⚠ Critical Action', margin + (3 * colWidth) + 10, yPos + 13);
+    doc.text('Critical Action', margin + (3 * colWidth) + 10, yPos + 13);
     
     yPos += 40;
-    doc.rect(20, yPos - 3, 10, 8, 'F');
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Active: ${stats.active}`, 35, yPos + 2);
-    
-    yPos += 15;
-    doc.setFillColor(105, 105, 105); // Grey
-    doc.rect(20, yPos - 3, 10, 8, 'F');
-    doc.text(`Inactive: ${stats.inactive}`, 35, yPos + 2);
-    
-    
-    yPos += 15;
+  doc.setFillColor(34, 139, 34); // Active green
+  doc.rect(20, yPos - 3, 10, 8, 'F');
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Active: ${stats.active}`, 35, yPos + 2);
+
+  yPos += 15;
+  doc.setFillColor(105, 105, 105); // Inactive grey
+  doc.rect(20, yPos - 3, 10, 8, 'F');
+  doc.text(`Inactive: ${stats.inactive}`, 35, yPos + 2);
+
+  yPos += 15;
+  doc.setFillColor(178, 34, 34); // Suspended red
+  doc.rect(20, yPos - 3, 10, 8, 'F');
+  doc.text(`Suspended: ${stats.suspended}`, 35, yPos + 2);
+
+  yPos += 15;
     
     // Check if department breakdown section fits
     const deptEntries = Object.entries(stats.departmentBreakdown);
@@ -1180,11 +1173,15 @@ export async function POST(request: NextRequest) {
     yPos = checkPageBreak(doc, yPos, deptTableHeight, margin);
     
     // Department breakdown with professional table format
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.text('DEPARTMENTAL DISTRIBUTION', margin, yPos);
+  // Full header for department distribution page
+  yPos = addPageHeader(doc, 'EXECUTIVE SUMMARY', 'Departmental Distribution', 2, 11);
     
-    yPos += 20;
+  yPos += 10;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(0, 0, 0);
+  doc.text('DEPARTMENT DISTRIBUTION', margin, yPos);
+  yPos += 10;
     
     // Create professional table for departments
     if (deptEntries.length > 0) {
@@ -1198,12 +1195,16 @@ export async function POST(request: NextRequest) {
       doc.setFillColor(25, 55, 109);
       doc.rect(margin, yPos, pageWidth - (2 * margin), 20, 'F');
       
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.text('DEPARTMENT', margin + 10, yPos + 13);
-      doc.text('EMPLOYEES', pageWidth - margin - 50, yPos + 13);
-      doc.text('% OF TOTAL', pageWidth - margin - 15, yPos + 13, { align: 'right' });
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  // Columns spaced 10px apart
+  const col1X = margin + 10;
+  const col2X = col1X + 80;
+  const col3X = col2X + 50;
+  doc.text('DEPARTMENT', col1X, yPos + 13);
+  doc.text('EMPLOYEES', col2X, yPos + 13);
+  doc.text('% OF TOTAL', col3X, yPos + 13);
       
       // Department rows
       yPos += 20;
@@ -1218,10 +1219,11 @@ export async function POST(request: NextRequest) {
           doc.rect(margin, yPos, pageWidth - (2 * margin), 15, 'F');
         }
         
-        const percentage = ((count / stats.total) * 100).toFixed(1);
-        doc.text(dept, margin + 10, yPos + 10);
-        doc.text(count.toString(), pageWidth - margin - 50, yPos + 10);
-        doc.text(`${percentage}%`, pageWidth - margin - 15, yPos + 10, { align: 'right' });
+  const percentage = ((count / stats.total) * 100).toFixed(1);
+  // Columns spaced 10px apart
+  doc.text(dept, col1X, yPos + 10);
+  doc.text(count.toString(), col2X, yPos + 10);
+  doc.text(`${percentage}%`, col3X, yPos + 10);
         
         yPos += 15;
       });
@@ -1239,7 +1241,7 @@ export async function POST(request: NextRequest) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
     doc.setTextColor(25, 55, 109);
-    doc.text('📊 EXECUTIVE INSIGHTS', margin + 10, yPos);
+    doc.text('EXECUTIVE INSIGHTS', margin + 10, yPos);
     
     yPos += 18;
     doc.setFont('helvetica', 'normal');
@@ -1250,13 +1252,13 @@ export async function POST(request: NextRequest) {
     const summaryActivePercentage = ((stats.active / stats.total) * 100).toFixed(1);
     if (parseFloat(summaryActivePercentage) >= 90) {
       doc.setTextColor(34, 139, 34);
-      doc.text(`✓ Excellent workforce health: ${summaryActivePercentage}% active accounts indicate strong engagement`, margin + 10, yPos);
+      doc.text(`Excellent workforce health: ${summaryActivePercentage}% active accounts indicate strong engagement`, margin + 10, yPos);
     } else if (parseFloat(summaryActivePercentage) >= 80) {
       doc.setTextColor(255, 140, 0);
-      doc.text(`⚠ Good workforce health: ${summaryActivePercentage}% active - monitor inactive accounts`, margin + 10, yPos);
+      doc.text(`Good workforce health: ${summaryActivePercentage}% active - monitor inactive accounts`, margin + 10, yPos);
     } else {
       doc.setTextColor(178, 34, 34);
-      doc.text(`⚠ Attention required: ${summaryActivePercentage}% active - review account management policies`, margin + 10, yPos);
+      doc.text(`Attention required: ${summaryActivePercentage}% active - review account management policies`, margin + 10, yPos);
     }
     
     yPos += 12;
@@ -1297,18 +1299,11 @@ export async function POST(request: NextRequest) {
       emp.createdAt && new Date(emp.createdAt as Date) >= thirtyDaysAgo
     ).length;
 
-    // ===== PAGE 3: BUSINESS INTELLIGENCE DASHBOARD =====
-    // TODO (Copilot): Ensure each major section starts on a new page if it doesn't fit
-    // - Page 1: Executive Summary
-    // - Page 2: Charts & Analytics
-    // - Page 3+: Employee Directory
-    // Use doc.addPage() between sections
-    
-    // Always start charts section on new page
-    doc.addPage();
-    
-    // Use helper function for consistent header
-    yPos = addPageHeader(doc, 'BUSINESS INTELLIGENCE DASHBOARD', 'Executive KPIs & Visual Analytics', 3, 6);
+  // Always start dashboard section on new page
+  doc.addPage();
+
+  // Use helper function for consistent header
+  yPos = addPageHeader(doc, 'BUSINESS INTELLIGENCE DASHBOARD', 'Executive KPIs & Visual Analytics', 3, 6);
     
     // Reset text color
     doc.setTextColor(0, 0, 0);
@@ -1348,7 +1343,7 @@ export async function POST(request: NextRequest) {
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('👥', cardX + 17, yPos + 18, { align: 'center' });
+    doc.text('', cardX + 17, yPos + 18, { align: 'center' });
     
     // Value
     doc.setTextColor(52, 144, 220);
@@ -1379,7 +1374,7 @@ export async function POST(request: NextRequest) {
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('✓', cardX + 17, yPos + 18, { align: 'center' });
+    doc.text('', cardX + 17, yPos + 18, { align: 'center' });
     
     // Value
     doc.setTextColor(40, 167, 69);
@@ -1412,7 +1407,7 @@ export async function POST(request: NextRequest) {
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('⚠', cardX + 17, yPos + 18, { align: 'center' });
+    doc.text('', cardX + 17, yPos + 18, { align: 'center' });
     
     // Value
     doc.setTextColor(220, 53, 69);
@@ -1443,7 +1438,7 @@ export async function POST(request: NextRequest) {
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('📅', cardX + 17, yPos + 18, { align: 'center' });
+    doc.text('', cardX + 17, yPos + 18, { align: 'center' });
     
     // Value
     doc.setTextColor(111, 66, 193);
@@ -1463,37 +1458,40 @@ export async function POST(request: NextRequest) {
     yPos += 100;
     
     // ===== 1. ACCOUNT STATUS BREAKDOWN (PIE CHART) =====
-    // Check if pie chart section fits (header + chart + legend = ~150px)
-    yPos = checkPageBreak(doc, yPos, 150, margin);
-    
-    // Professional section header with enhanced styling
-    doc.setFillColor(245, 248, 252); // Subtle blue background
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 40, 'F');
-    doc.setDrawColor(25, 55, 109);
-    doc.setLineWidth(2);
-    doc.rect(margin, yPos, pageWidth - (2 * margin), 40, 'S');
-    
-    // Add icon area
-    doc.setFillColor(25, 55, 109);
-    doc.circle(margin + 20, yPos + 20, 8, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('1', margin + 20, yPos + 22, { align: 'center' });
-    
-    // Section title
-    doc.setTextColor(25, 55, 109);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.text('ACCOUNT STATUS DISTRIBUTION ANALYSIS', margin + 40, yPos + 18);
-    
-    // Section description
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(75, 85, 99);
-    doc.text('Visual overview of employee account health - Critical for security risk management', margin + 40, yPos + 32);
-    
-    yPos += 55; // Adjusted for new header height
+  // Check if pie chart section fits (header + chart + legend = ~150px)
+  yPos = checkPageBreak(doc, yPos, 150, margin);
+
+  // Add header for ACCOUNT STATUS DISTRIBUTION ANALYSIS page only
+  yPos = addPageHeader(doc, 'BUSINESS INTELLIGENCE DASHBOARD', 'Executive KPIs & Visual Analytics', 3, 6);
+
+  // Professional section header with enhanced styling
+  doc.setFillColor(245, 248, 252); // Subtle blue background
+  doc.rect(margin, yPos, pageWidth - (2 * margin), 40, 'F');
+  doc.setDrawColor(25, 55, 109);
+  doc.setLineWidth(2);
+  doc.rect(margin, yPos, pageWidth - (2 * margin), 40, 'S');
+
+  // Add icon area
+  doc.setFillColor(25, 55, 109);
+  doc.circle(margin + 20, yPos + 20, 8, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('1', margin + 20, yPos + 22, { align: 'center' });
+
+  // Section title
+  doc.setTextColor(25, 55, 109);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('ACCOUNT STATUS DISTRIBUTION ANALYSIS', margin + 40, yPos + 18);
+
+  // Section description
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(75, 85, 99);
+  doc.text('Visual overview of employee account health - Critical for security risk management', margin + 40, yPos + 32);
+
+  yPos += 55; // Adjusted for new header height
     
     // Draw pie chart with professional styling - optimized for A4 width
     const pieChartX = pageWidth / 2 - 50;
@@ -1504,7 +1502,7 @@ export async function POST(request: NextRequest) {
     const chartData = drawAccountStatusPieChart(doc, pieChartX, pieChartY, pieRadius, stats);
     
     // Enhanced legend with professional styling - positioned closer for A4 fit
-    const legendStartX = pieChartX + pieRadius + 50;
+    const legendStartX = pieChartX + pieRadius + 20;
     let legendStartY = pieChartY - 25;
     
     // Legend container background
@@ -1584,14 +1582,9 @@ export async function POST(request: NextRequest) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(75, 85, 99);
-    doc.text('Visual snapshot of department sizes - Compare team sizes and workloads at a glance', margin + 40, yPos + 32);
+    doc.text('Visual snapshot of department sizes - Comparison of team sizes and workloads', margin + 40, yPos + 32);
     
     yPos += 55;
-    
-    // TODO (Copilot): Before drawing bar chart, ensure it fits and scales properly
-    // - Check available space with checkPageBreak(doc, yPos, 140)
-    // - Scale chartWidth to usableWidth (never exceed page margins)
-    // - Truncate department labels > 6 chars with "..." for better fit
     
     // Draw department bar chart - optimized for A4 width (max 500px)
     const chartWidth = Math.min(pageWidth - 60, 500); // Max 500px width
@@ -1600,13 +1593,16 @@ export async function POST(request: NextRequest) {
     yPos += 140;
     
     // ===== 4. STATUS BY DEPARTMENT (STACKED BAR CHART) =====
-    // Check if stacked chart section fits
-    yPos = checkPageBreak(doc, yPos, 220, margin);
-    
-    doc.setTextColor(0, 0, 0);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.text('4. Status by Department (Advanced)', 30, yPos);
+  // Check if stacked chart section fits
+  yPos = checkPageBreak(doc, yPos, 220, margin);
+
+  // Add header for 4. Status by Department (Advanced) page only
+  yPos = addPageHeader(doc, 'DEPARTMENT ANALYTICS', 'Status by Department (Advanced)', 4, 6);
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text('4. Status by Department (Advanced)', 30, yPos);
     
     yPos += 20;
     doc.setFont('helvetica', 'normal');
@@ -1675,19 +1671,22 @@ export async function POST(request: NextRequest) {
     yPos += 140;
     
     // ===== SECURITY & MANAGEMENT INSIGHTS =====
-    // Check if insights section fits
-    yPos = checkPageBreak(doc, yPos, 180, margin);
-    
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(34, 139, 34);
-    doc.setLineWidth(1);
-    doc.rect(20, yPos, pageWidth - 40, 100, 'FD');
-    
-    yPos += 20;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.setTextColor(34, 139, 34);
-    doc.text('🔒 Security & Management Insights', 30, yPos);
+  // Check if insights section fits
+  yPos = checkPageBreak(doc, yPos, 180, margin);
+
+  // Add HIRING TRENDS & INSIGHTS header
+  yPos = addPageHeader(doc, 'HIRING TRENDS & INSIGHTS', 'Recruitment Patterns & Growth Analysis', 5, 6);
+
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(34, 139, 34);
+  doc.setLineWidth(1);
+  doc.rect(20, yPos, pageWidth - 40, 100, 'FD');
+
+  yPos += 20;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.setTextColor(34, 139, 34);
+  doc.text('Security & Management Insights', 30, yPos);
     
     yPos += 25;
     doc.setFont('helvetica', 'normal');
@@ -1699,39 +1698,42 @@ export async function POST(request: NextRequest) {
     
     // Active status insight
     doc.setTextColor(34, 139, 34);
-    doc.text(`✓ ${insightsActivePercentage}% of employee accounts are currently active`, 30, yPos);
+    doc.text(`${insightsActivePercentage}% of employee accounts are currently active`, 30, yPos);
     doc.setTextColor(0, 0, 0);
-    doc.text('   Strong workforce engagement and proper system access management', 40, yPos + 12);
+    doc.text('Strong workforce engagement and proper system access management', 40, yPos + 12);
     
     yPos += 25;
     
     // Security recommendations
     if (stats.inactive > 0 || stats.suspended > 0) {
       doc.setTextColor(255, 140, 0);
-      doc.text(`⚠ Review Required: ${stats.inactive + stats.suspended} accounts need attention`, 30, yPos);
+      doc.text(`Review Required: ${stats.inactive + stats.suspended} accounts need attention`, 30, yPos);
       doc.setTextColor(0, 0, 0);
-      doc.text('   Inactive/suspended accounts pose potential security risks', 40, yPos + 12);
+      doc.text('Inactive/suspended accounts pose potential security risks', 40, yPos + 12);
     } else {
       doc.setTextColor(34, 139, 34);
-      doc.text('✓ Excellent: All accounts are active and properly managed', 30, yPos);
+      doc.text('Excellent: All accounts are active and properly managed', 30, yPos);
     }
     
     // ===== MANAGER ACTION ITEMS =====
     yPos += 45;
     
-    // Check if action items section fits
-    yPos = checkPageBreak(doc, yPos, 100, margin);
-    
-    doc.setFillColor(255, 248, 220);
-    doc.setDrawColor(255, 165, 0);
-    doc.setLineWidth(1);
-    doc.rect(20, yPos, pageWidth - 40, 80, 'FD');
+  // Check if action items section fits
+  yPos = checkPageBreak(doc, yPos, 100, margin);
+
+  // Add HIRING TRENDS & INSIGHTS header
+  yPos = addPageHeader(doc, 'HIRING TRENDS & INSIGHTS', 'Recruitment Patterns & Growth Analysis', 5, 6);
+
+  doc.setFillColor(255, 248, 220);
+  doc.setDrawColor(255, 165, 0);
+  doc.setLineWidth(1);
+  doc.rect(20, yPos, pageWidth - 40, 100, 'FD');
     
     yPos += 15;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.setTextColor(255, 140, 0);
-    doc.text('📋 Manager Action Items & Recommendations', 30, yPos);
+    doc.text('Manager Action Items & Recommendations', 30, yPos);
     
     yPos += 20;
     doc.setFont('helvetica', 'normal');
@@ -1762,9 +1764,6 @@ export async function POST(request: NextRequest) {
     doc.text('DETAILED EMPLOYEE DIRECTORY', margin, 22);
     
     // Add page number and section indicator
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Page 6 of 6 | Complete Employee Listing', pageWidth - margin, 22, { align: 'right' });
     
     // Add data scope information
     doc.setTextColor(0, 0, 0);
@@ -1847,13 +1846,6 @@ export async function POST(request: NextRequest) {
     if (statusColumnIndex >= 0) {
       console.log('📊 Sample status values:', rows.slice(0, 3).map(row => row[statusColumnIndex]));
     }
-
-    // TODO (Copilot): Configure autoTable to fit within page
-    // - Use tableWidth: 'wrap' or tableWidth: usableWidth
-    // - Reduce font size if table is too wide (styles.fontSize = 8 or 9)
-    // - Set columnStyles for wide columns (Email = 60px, Role = 50px)
-    // - Enable headRows repetition with repeatHeaders: true
-    // TODO (Copilot): If table rows exceed one page, autoTable should split rows across pages automatically
 
     // Add detailed table with enhanced professional styling - optimized for A4 width
     autoTable(doc, {

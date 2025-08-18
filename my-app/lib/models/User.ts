@@ -1,6 +1,14 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IUser extends Document {
+  gender?: string; // 'Male', 'Female', 'Other'
+  age?: number;
+  attritionHistory?: Array<{ year: number; rate: number }>;
+  hireHistory?: Array<{ quarter: string; hires: number }>;
+  benefitsParticipation?: {
+    healthInsurance: number;
+    retirementPlan: number;
+  };
   email: string;
   password: string;
   name: string;
@@ -29,6 +37,29 @@ export interface IUser extends Document {
 }
 
 const UserSchema = new Schema<IUser>({
+  gender: {
+    type: String,
+    enum: ['Male', 'Female', 'Other'],
+    default: 'Other',
+    trim: true
+  },
+  age: {
+    type: Number,
+    min: 0,
+    max: 120
+  },
+  attritionHistory: [{
+    year: { type: Number },
+    rate: { type: Number }
+  }],
+  hireHistory: [{
+    quarter: { type: String },
+    hires: { type: Number }
+  }],
+  benefitsParticipation: {
+    healthInsurance: { type: Number, min: 0, max: 100 },
+    retirementPlan: { type: Number, min: 0, max: 100 }
+  },
   email: {
     type: String,
     required: [true, 'Email is required'],

@@ -191,6 +191,45 @@ export default function EmployeeDirectory() {
     }
   };
 
+  // Export to Excel
+  const exportToExcel = async () => {
+    try {
+      setExporting(true);
+      const userData = localStorage.getItem("user");
+      const token = localStorage.getItem("auth-token");
+      if (!userData) {
+        router.push("/login");
+        return;
+      }
+      // You can add filters here if needed
+      const response = await fetch("/api/employee-list/export", {
+        method: "GET",
+        headers: {
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to export Excel");
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `employee-directory-${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Export failed";
+      setError(errorMessage);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Reset filters
   const resetFilters = () => {
     setSearch("");
@@ -350,6 +389,19 @@ export default function EmployeeDirectory() {
               )}
               Export PDF
             </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={exportToExcel}
+              disabled={exporting || !data?.employees.length}
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Export Excel
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -464,6 +516,10 @@ export default function EmployeeDirectory() {
           </div>
         </div>
       )}
+      {/* Back to Dashboard Button at bottom left */}
+      <div className="mt-10 flex justify-start">
+        <Button className="bg-black text-white hover:bg-gray-800" onClick={() => router.push("/")}>Back to Dashboard</Button>
+      </div>
     </div>
   );
 }
