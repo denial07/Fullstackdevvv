@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
-import { Send, Building2, MapPin, Mail, Package, AlertTriangle, CheckCircle, Loader2, RefreshCw } from "lucide-react"
+import { Building2, MapPin, Mail, Package, AlertTriangle, CheckCircle, Loader2, RefreshCw } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -395,9 +395,9 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Material and Company Info */}
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 gap-8">
+          {/* Material and Company Info */}
+          <div className="space-y-6">
             {/* Material Information */}
             <div className="bg-white rounded-lg shadow-sm border p-6">
               <h2 className="text-xl font-semibold mb-4">Material Information</h2>
@@ -522,52 +522,6 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Right Column - Chat Interface */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-sm border h-[600px] flex flex-col">
-              <div className="p-4 border-b">
-                <h2 className="font-semibold flex items-center">
-                  <Building2 className="h-5 w-5 mr-2" />
-                  Company Chat
-                </h2>
-              </div>
-              <div className="flex-1 flex flex-col p-4">
-                {/* Chat Messages Area */}
-                <div className="flex-1 bg-gray-50 rounded-lg p-4 mb-4 overflow-y-auto">
-                  <div className="space-y-4">
-                    <div className="bg-white p-3 rounded-lg shadow-sm">
-                      <p className="text-sm text-gray-600 mb-1">Company Representative</p>
-                      <p className="text-gray-800">Hello! How can I help you with your {material.item} inquiry?</p>
-                    </div>
-                    <div className="bg-blue-100 p-3 rounded-lg shadow-sm ml-8">
-                      <p className="text-sm text-gray-600 mb-1">You</p>
-                      <p className="text-gray-800">I'd like to know about bulk pricing for this material.</p>
-                    </div>
-                    <div className="bg-white p-3 rounded-lg shadow-sm">
-                      <p className="text-sm text-gray-600 mb-1">Company Representative</p>
-                      <p className="text-gray-800">
-                        For orders above 100 {material.unit}, we offer a 15% discount. Would you like me to prepare a
-                        quote?
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Chat Input */}
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    placeholder="Type something here..."
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                    <Send className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </main>
