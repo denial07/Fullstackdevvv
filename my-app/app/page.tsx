@@ -236,6 +236,14 @@ type DashboardProps = {
     expired: number
     totalValue: number
   }
+  ordersSummary: {
+    total: number
+    pending: number
+    paid: number
+    shipped: number
+    delivered: number
+    totalValue: number
+  }
 }
 
 
@@ -293,7 +301,7 @@ export default function DashboardPage() {
 
   if (!data) return null
 
-  const { shipmentSummary, inventorySummary } = data
+  const { shipmentSummary, inventorySummary, ordersSummary } = data
 
   return  (
     <div className="min-h-screen bg-gray-50">
@@ -301,9 +309,7 @@ export default function DashboardPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Key Metrics */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
 
             {/* Card 1 - Shipments */}
             <Link href="/shipments">
@@ -314,7 +320,7 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-gray-900">{shipmentSummary.inTransit}</div>
-                  <p className="text-xs text-slate-500">{shipmentSummary.delayed} delayed</p>
+                  <p className="text-xs text-slate-500">{shipmentSummary.delayed} delayed • {shipmentSummary.total} total</p>
                 </CardContent>
               </Card>
             </Link>
@@ -328,16 +334,30 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-gray-900">{inventorySummary.totalItems}</div>
-                  <p className="text-xs text-slate-500">{inventorySummary.lowStock} low stock</p>
+                  <p className="text-xs text-slate-500">
+                    {inventorySummary.lowStock} low stock • {inventorySummary.expiringSoon} expiring • {inventorySummary.expired} expired
+                  </p>
                 </CardContent>
               </Card>
             </Link>
 
-
+            {/* Card 3 - Orders */}
+            <Link href="/orders">
+              <Card className="border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-900">Orders</CardTitle>
+                  <ShoppingCart className="h-4 w-4" style={{ color: colors.warning }} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">{ordersSummary.total}</div>
+                  <p className="text-xs text-slate-500">
+                    {ordersSummary.pending} pending • {ordersSummary.delivered} delivered
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
 
           </div>
-        </main>
-
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">

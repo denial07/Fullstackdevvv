@@ -50,12 +50,39 @@ export async function getInventorySummary(): Promise<InventorySummary> {
     await connectToDatabase();
     const items = await Inventory.find({}).lean();
 
+    // Helper function to calculate days until expiry
+    const getDaysUntilExpiry = (expiryDate: string) => {
+        const today = new Date()
+        const expiry = new Date(expiryDate)
+        const diffTime = expiry.getTime() - today.getTime()
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        return diffDays
+    }
+
+    // Calculate metrics using the same logic as inventory page
+    const lowStock = items.filter(item => {
+        const stockPercentage = (item.quantity / item.maxStock) * 100
+        return stockPercentage < 20
+    }).length
+
+    const expiringSoon = items.filter(item => {
+        const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+        return daysToExpiry < 30 && daysToExpiry >= 0
+    }).length
+
+    const expired = items.filter(item => {
+        const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+        return daysToExpiry < 0
+    }).length
+
+    const totalValue = items.reduce((sum, item) => sum + item.quantity * item.costPerUnit, 0)
+
     return {
         totalItems: items.length,
-        lowStock: items.filter(i => i.stock <= 5).length,
-        expiringSoon: items.filter(i => i.expiresInDays > 0 && i.expiresInDays <= 30).length,
-        expired: items.filter(i => i.expiresInDays <= 0).length,
-        totalValue: items.reduce((sum, i) => sum + (i.stock * (i.price || 0)), 0),
+        lowStock,
+        expiringSoon,
+        expired,
+        totalValue,
     };
 }
 
