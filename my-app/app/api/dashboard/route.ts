@@ -141,7 +141,7 @@ export async function GET(req: Request) {
             $addFields: {
                 weekStart: { $dateTrunc: { date: '$shipAt', unit: 'week', timezone: 'UTC' } },
                 isIncoming: { $eq: ['$Type', 'Incoming'] },
-                isOutgoing: { $eq: ['$Type', 'Outgoing'] },
+                isInternal: { $eq: ['$Type', 'Internal'] },
                 isDelayed: { $or: [{ $eq: ['$status', 'Delayed'] }, { $gt: ['$delayDays', 0] }] }
             }
         },

@@ -35,7 +35,7 @@ import {
 type ShipmentSummary = { total: number; inTransit: number; delayed: number; arrived: number; totalValue: number }
 type InventorySummary = { totalItems: number; lowStock: number; expiringSoon: number; expired: number; totalValue: number }
 
-type ShipmentTrendPoint = { week: string; incoming: number; outgoing: number; delayed: number }
+type ShipmentTrendPoint = { week: string; incoming: number; internal: number; delayed: number }
 type InventoryValueSlice = { name: string; value: number }
 type DailyOpsPoint = { day: string; shipments: number; inventory: number }
 type RecentShipment = { id: string; vendor: string; status: 'In Transit' | 'Delayed' | 'Arrived'; expectedArrival: string; value: number; delay: number }
@@ -386,7 +386,7 @@ function AnalyticsCharts({ shipmentTrends, inventoryValueDist, dailyOps }: { shi
                 <Tooltip />
                 <Legend />
                 <Bar dataKey="incoming" fill="#059669" name="Incoming" />
-                <Bar dataKey="outgoing" fill="#1e40af" name="Outgoing" />
+                <Bar dataKey="internal" fill="#1e40af" name="Internal" />
                 <Bar dataKey="delayed" fill="#dc2626" name="Delayed" />
               </BarChart>
             </ResponsiveContainer>
