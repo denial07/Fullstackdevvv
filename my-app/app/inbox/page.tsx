@@ -110,6 +110,410 @@ export default function InboxPage() {
   const [isEditingAnalysis, setIsEditingAnalysis] = useState(false)
   const [editableAnalysis, setEditableAnalysis] = useState<EmailAnalysis | null>(null)
 
+  // Sample test emails for testing AI analysis
+  const createTestEmail = (type: 'incoming-order' | 'outgoing-order' | 'ocean-freight-order' | 'local-order' | 'non-shipment' = 'incoming-order'): Email => {
+    const baseId = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
+    switch (type) {
+      case 'incoming-order':
+        return {
+          id: baseId,
+          from: {
+            name: "Timber Supplies Asia",
+            email: "orders@timbersupplies.com",
+            avatar: "/placeholder.svg"
+          },
+          subject: "Order Confirmation #PO-2025-0789 - Raw Wood Materials",
+          preview: "Thank you for your order. Your raw wood materials order has been confirmed and will be shipped soon...",
+          body: `Dear Valued Customer,
+
+Thank you for your order! We are pleased to confirm your purchase of raw wood materials.
+
+ORDER CONFIRMATION DETAILS:
+- Order Number: PO-2025-0789
+- Shipment ID: SH-IN-240789
+- Order Date: January 16, 2025
+- Status: Confirmed - In Transit
+- Tracking Number: TS789456123
+- Vendor: Timber Supplies Asia Pte Ltd
+- Estimated Delivery: January 20, 2025
+- Delivery Destination: Singapore Warehouse, 123 Industrial Road, Singapore 628123
+- Total Order Value: $8,450.00
+
+SHIPPING DETAILS:
+- Carrier: Maritime Express Lines
+- Vessel: MV Wood Trader
+- Port of Departure: Port Klang, Malaysia
+- Port of Arrival: PSA Singapore Terminal
+- Driver (Final Mile): Lim Boon Hock (License: D9988776)
+- Vehicle: Timber Truck SGX-7755B
+- Delivery Address: Singapore Warehouse, 123 Industrial Road, Block A, Receiving Dock 2, Singapore 628123
+
+ORDERED ITEMS:
+1. Premium Teak Wood Planks Grade A - 50 pieces @ $85.00 each = $4,250.00
+2. Oak Wood Beams 4x6 inch Kiln Dried - 25 pieces @ $120.00 each = $3,000.00
+3. Pine Wood Sheets 15mm Treated - 40 pieces @ $30.00 each = $1,200.00
+
+DELIVERY INSTRUCTIONS:
+Your order will be delivered to Singapore Warehouse receiving dock. Driver Lim Boon Hock will contact you 2 hours before delivery. Please ensure forklift is available for unloading heavy timber pieces. All wood has been treated and certified for quality.
+
+PAYMENT TERMS:
+Payment is due upon delivery. Please have your receiving manager ready to inspect and sign for the materials.
+
+Thank you for choosing Timber Supplies Asia for your wood material needs!
+
+Best regards,
+Sales Team
+Timber Supplies Asia Pte Ltd
+Email: orders@timbersupplies.com
+Phone: +60-3-1234-5678`,
+          timestamp: new Date().toISOString(),
+          isRead: false,
+          isStarred: false,
+          hasAttachments: false,
+          labels: ["High Priority"],
+          priority: "high" as const,
+          category: "updates" as const,
+          threadId: `thread-${baseId}`
+        }
+
+      case 'outgoing-order':
+        return {
+          id: baseId,
+          from: {
+            name: "DHL Express",
+            email: "notifications@dhl.com",
+            avatar: "/placeholder.svg"
+          },
+          subject: "Package Delivered Successfully - Tracking #DHL9876543210",
+          preview: "Your raw wood materials from Forest Products Malaysia have been delivered successfully...",
+          body: `Dear Valued Customer,
+
+We are pleased to inform you that your raw wood materials shipment has been delivered successfully.
+
+DELIVERY CONFIRMATION:
+- Tracking Number: DHL9876543210
+- Status: Delivered
+- Delivery Date: January 16, 2025 at 2:45 PM
+- Delivered to: Malaysian Warehouse - Receiving Dock B
+- Signed by: Ahmad Razak (Warehouse Manager)
+- Carrier: DHL Express
+
+SHIPMENT DETAILS:
+- Vendor: Forest Products Malaysia Sdn Bhd
+- Origin: Kuching Timber Port, Sarawak, Malaysia
+- Destination: Malaysian Warehouse, 456 Industrial Park, Johor Bahru
+- Final Delivery Address: Malaysian Warehouse, 456 Industrial Park Drive, Level 1, Dock B, Johor Bahru 81100, Malaysia
+- Total Weight: 2,450 kg
+- Total Value: $6,850.50
+
+TRANSPORT DETAILS:
+- Ground Transport: Timber Truck MY-7755K
+- Driver: Rahman bin Abdullah (Employee ID: DHL-MY-8834)
+- Route: Kuching → Johor Bahru Highway
+
+RAW WOOD MATERIALS DELIVERED:
+1. Meranti Wood Logs Grade AA - 15 logs @ $180.00 each = $2,700.00
+2. Rubber Wood Planks Kiln Dried - 80 pieces @ $45.00 each = $3,600.00
+3. Bamboo Poles Premium Grade - 200 pieces @ $3.25 each = $650.00
+4. Shipping & Handling Fee: $100.50
+
+DELIVERY NOTES:
+All wood materials were inspected for moisture content and quality upon delivery. Driver Rahman confirmed all timber was properly treated and ready for warehouse storage. Items are now available for processing at Malaysian Warehouse Dock B receiving area.
+
+Please ensure proper ventilation and humidity control for wood storage.
+
+Thank you for choosing DHL Express!
+
+DHL Customer Service Team`,
+          timestamp: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+          isRead: false,
+          isStarred: true,
+          hasAttachments: false,
+          labels: [],
+          priority: "normal" as const,
+          category: "updates" as const,
+          threadId: `thread-${baseId}`
+        }
+
+      case 'outgoing-order':
+        return {
+          id: baseId,
+          from: {
+            name: "Singapore Warehouse System",
+            email: "orders@sgwarehouse.com",
+            avatar: "/placeholder.svg"
+          },
+          subject: "Order Confirmation #SO-2025-0156 - Wood Materials Dispatch",
+          preview: "Your order has been confirmed and dispatched to Furniture Makers Malaysia...",
+          body: `ORDER DISPATCH CONFIRMATION
+
+We are pleased to confirm that your wood materials order has been processed and dispatched.
+
+ORDER DETAILS:
+- Sales Order Number: SO-2025-0156
+- Shipment ID: SH-OUT-240156
+- Order Date: January 15, 2025
+- Status: In Transit
+- Customer: Furniture Makers Sdn Bhd
+- Delivery Destination: 789 Furniture Industrial Estate, Shah Alam, Selangor, Malaysia
+- Tracking Number: SG999AA1234567890
+- Total Order Value: $12,200.00
+
+SHIPPING INFORMATION:
+- Dispatched From: Singapore Warehouse, 123 Industrial Road
+- Carrier: Cross-Border Logistics Sdn Bhd
+- Vehicle: Heavy Duty Timber Truck MY-7788K
+- Driver: Ahmad bin Hassan (License: MY-D5521)
+- Estimated Delivery: January 19, 2025
+- Delivery Address: Furniture Makers Sdn Bhd, 789 Furniture Industrial Estate, Block D, Unit 25-30, Shah Alam, Selangor 40000, Malaysia
+
+TRANSPORT ROUTE:
+- Departure Point: Singapore Tuas Checkpoint
+- Arrival Point: Johor Bahru Checkpoint, Malaysia
+- Final Route: North-South Highway → Shah Alam Industrial Area
+
+ORDERED WOOD MATERIALS:
+1. Premium Teak Wood Boards 25mm Grade AAA - 30 pieces @ $150.00 each = $4,500.00
+2. Mahogany Wood Planks Kiln Dried - 50 pieces @ $95.00 each = $4,750.00
+3. Cherry Wood Veneers Premium Grade - 100 sheets @ $28.00 each = $2,800.00
+4. Wood Treatment & Finishing Kit - 5 sets @ $30.00 each = $150.00
+
+DELIVERY INSTRUCTIONS:
+Driver Ahmad will contact your receiving supervisor Encik Lim Boon Huat 2 hours before arrival. Please ensure forklift equipment is available for timber unloading. All wood materials have been quality checked and are ready for furniture production.
+
+CUSTOMER REQUIREMENTS:
+- Delivery Time: 8 AM - 4 PM weekdays only
+- Special Handling: Moisture-sensitive materials require covered unloading
+- Inspection Required: Customer quality check upon delivery
+
+Thank you for your business!
+
+Best regards,
+Singapore Warehouse Operations Team
+Phone: +65-6234-5678
+Email: orders@sgwarehouse.com`,
+          timestamp: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
+          isRead: false,
+          isStarred: false,
+          hasAttachments: true,
+          labels: [],
+          priority: "normal" as const,
+          category: "updates" as const,
+          threadId: `thread-${baseId}`
+        }
+
+      case 'local-order':
+        return {
+          id: baseId,
+          from: {
+            name: "Malaysian Forest Products",
+            email: "sales@malayforest.com",
+            avatar: "/placeholder.svg"
+          },
+          subject: "Order Confirmation #MY-ORD-4567 - Local Wood Supply",
+          preview: "Your local wood materials order has been confirmed for delivery to Malaysian Warehouse...",
+          body: `ORDER CONFIRMATION - LOCAL DELIVERY
+
+Thank you for your order of premium Malaysian wood materials!
+
+ORDER CONFIRMATION:
+- Order Number: MY-ORD-4567
+- Shipment ID: SH-LOC-564567
+- Order Date: January 16, 2025
+- Status: Confirmed - Ready for Delivery
+- Vendor: Malaysian Forest Products Sdn Bhd
+- Customer: Your Company Malaysian Operations
+- Delivery Destination: Malaysian Warehouse, 456 Industrial Park, Johor Bahru
+- Tracking Number: MFP567890123
+- Total Order Value: $6,850.50
+
+LOCAL DELIVERY DETAILS:
+- Departure: Kuching Timber Processing Plant, Sarawak
+- Driver: Rahman bin Abdullah (License: JKR-MY-8834)
+- Vehicle: Malaysian Timber Truck MY-7755K
+- Route: Kuching → Johor Bahru Highway (Local Transport)
+- Estimated Delivery: January 18, 2025
+- Delivery Address: Malaysian Warehouse, 456 Industrial Park Drive, Level 1, Dock B, Johor Bahru 81100, Malaysia
+
+CONFIRMED WOOD MATERIALS:
+1. Meranti Wood Logs Grade AA Premium - 15 logs @ $180.00 each = $2,700.00
+2. Rubber Wood Planks Kiln Dried - 80 pieces @ $45.00 each = $3,600.00
+3. Bamboo Poles Construction Grade - 200 pieces @ $3.25 each = $650.00
+4. Local Delivery & Handling: $100.50
+
+QUALITY SPECIFICATIONS:
+- All timber kiln dried to 12% moisture content
+- Graded according to Malaysian Timber Standards
+- Certified sustainable forestry sources
+- Fumigation treatment completed for storage
+
+DELIVERY ARRANGEMENTS:
+Driver Rahman will contact Malaysian Warehouse 2 hours before arrival. Please ensure proper ventilation in storage area for wood materials. Forklift assistance required for log handling.
+
+PAYMENT TERMS:
+Net 30 days from delivery date. Invoice will be sent upon successful delivery confirmation.
+
+Thank you for supporting local Malaysian timber industry!
+
+Warm regards,
+Sales Department
+Malaysian Forest Products Sdn Bhd
+Kuching, Sarawak
+Phone: +60-82-123-4567
+Email: sales@malayforest.com`,
+          timestamp: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+          isRead: false,
+          isStarred: true,
+          hasAttachments: false,
+          labels: [],
+          priority: "normal" as const,
+          category: "updates" as const,
+          threadId: `thread-${baseId}`
+        }
+
+      case 'ocean-freight-order':
+        return {
+          id: baseId,
+          from: {
+            name: "Indonesian Timber Exports",
+            email: "orders@indotimber.co.id",
+            avatar: "/placeholder.svg"
+          },
+          subject: "Order Confirmation #ITE-2025-789 - Premium Timber Ocean Freight",
+          preview: "Your premium Indonesian timber order has been confirmed and loaded for ocean freight delivery...",
+          body: `PREMIUM TIMBER ORDER CONFIRMATION - OCEAN FREIGHT
+
+We are pleased to confirm your large-scale timber order for ocean freight delivery.
+
+ORDER DETAILS:
+- Order Number: ITE-2025-789
+- Shipment ID: SH-OF-890789
+- Order Date: January 10, 2025
+- Status: Confirmed - Shipped via Ocean Freight
+- Vendor: Indonesian Timber Exports Ltd
+- Bill of Lading: MAEU789456123
+- Container Number: MSKU 7891234 5
+- Estimated Delivery: January 22, 2025
+- Total Order Value: $35,750.00
+
+OCEAN FREIGHT DETAILS:
+- Vessel Name: MAERSK ESSEX
+- Voyage Number: 125E
+- Port of Loading: Tanjung Priok Port, Jakarta, Indonesia
+- Port of Discharge: PSA Singapore Pasir Panjang Terminal
+- Terminal: PPT Container Terminal 1, Berth 14A
+- Container Type: 40ft Open Top Container (for timber)
+
+FINAL MILE DELIVERY:
+- Pickup Driver: Kumar Raj (CDL License: T1234567S)
+- Vehicle: Mercedes Timber Truck SGP-9988T
+- Pickup Address: PSA Singapore, 200 Pasir Panjang Road, Terminal 1, Gate 3
+- Final Destination: Singapore Warehouse, 123 Industrial Road, Block A, Singapore 628123
+
+PREMIUM TIMBER ORDER:
+1. Indonesian Teak Logs Grade AAA - 25 logs @ $800.00 each = $20,000.00
+2. Mahogany Timber Planks Kiln Dried - 120 pieces @ $85.00 each = $10,200.00  
+3. Ironwood Beams Heavy Duty Construction - 40 pieces @ $125.00 each = $5,000.00
+4. Bamboo Construction Poles Premium - 500 pieces @ $1.10 each = $550.00
+
+CARGO SPECIFICATIONS:
+- Total Weight: 28,500 kg
+- All timber fumigated and certified for international export
+- Phytosanitary certificates included
+- Moisture content verified at 12-15% for optimal quality
+
+DELIVERY ARRANGEMENTS:
+Container arrives January 17, 2025. Free time expires January 24, 2025. Driver Kumar will coordinate pickup and contact Singapore Warehouse 2 hours before delivery. Crane/forklift required for unloading heavy timber logs.
+
+QUALITY ASSURANCE:
+All timber has been graded and inspected according to international standards. Quality certificates and sustainable forestry documentation included.
+
+Thank you for choosing Indonesian Timber Exports for your premium wood needs!
+
+Best regards,
+Export Sales Department
+Indonesian Timber Exports Ltd
+Jakarta, Indonesia
+Phone: +62-21-567-8901
+Email: orders@indotimber.co.id`,
+          timestamp: new Date(Date.now() - 1800000).toISOString(), // 30 minutes ago
+          isRead: false,
+          isStarred: false,
+          hasAttachments: true,
+          labels: ["High Priority"],
+          priority: "high" as const,
+          category: "updates" as const,
+          threadId: `thread-${baseId}`
+        }
+
+      case 'non-shipment':
+        return {
+          id: baseId,
+          from: {
+            name: "HR Department",
+            email: "hr@company.com",
+            avatar: "/placeholder.svg"
+          },
+          subject: "Monthly Team Meeting - January 2025",
+          preview: "Please join us for our monthly team meeting scheduled for next week...",
+          body: `Dear Team,
+
+I hope this email finds you well. I wanted to reach out regarding our upcoming monthly team meeting.
+
+MEETING DETAILS:
+- Date: January 22, 2025
+- Time: 10:00 AM - 11:30 AM (SGT)
+- Location: Conference Room A / Zoom (Hybrid)
+- Meeting ID: 123-456-789
+
+AGENDA:
+1. Q4 2024 Performance Review (15 minutes)
+2. Q1 2025 Goals and Objectives (30 minutes)
+3. New Process Updates (20 minutes)
+4. Team Building Activities Discussion (15 minutes)
+5. Q&A Session (10 minutes)
+
+PREPARATION:
+Please prepare a brief update on your current projects and any challenges you're facing. We'll also be discussing the new inventory management system implementation.
+
+RSVP:
+Please confirm your attendance by January 20, 2025. If you cannot attend, please let me know in advance.
+
+Looking forward to seeing everyone!
+
+Best regards,
+Sarah Johnson
+HR Manager
+
+Company Confidential - Internal Use Only`,
+          timestamp: new Date(Date.now() - 14400000).toISOString(), // 4 hours ago
+          isRead: true,
+          isStarred: false,
+          hasAttachments: false,
+          labels: [],
+          priority: "low" as const,
+          category: "updates" as const,
+          threadId: `thread-${baseId}`
+        }
+
+      default:
+        return createTestEmail('incoming-order')
+    }
+  }
+
+  const handleTestEmail = () => {
+    const testTypes: Array<'incoming-order' | 'outgoing-order' | 'local-order' | 'ocean-freight-order' | 'non-shipment'> = [
+      'incoming-order', 'outgoing-order', 'local-order', 'ocean-freight-order', 'non-shipment'
+    ]
+    const randomType = testTypes[Math.floor(Math.random() * testTypes.length)]
+    const testEmail = createTestEmail(randomType)
+    setEmails(prev => [testEmail, ...prev])
+    toast.success(`Test email added: ${randomType.replace('-', ' ')}`, {
+      description: "Click on the test email to analyze it with AI"
+    })
+  }
+
   const filteredEmails = emails.filter((email) => {
     const matchesSearch =
       !searchTerm ||
@@ -512,6 +916,15 @@ export default function InboxPage() {
               </p>
             </div>
             <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTestEmail}
+                className="bg-purple-600 text-white hover:bg-purple-700"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Test Email
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

@@ -51,8 +51,11 @@ export async function POST(request: NextRequest) {
     
     console.log("Final shipment type:", shipmentType);
     
-    // Generate a unique business ID for the shipment following existing pattern
-    const businessId = `SH-${shipmentType === 'incoming' ? 'IN' : 'OUT'}-${String(Date.now()).slice(-6)}`
+    // Use AI-generated shipment ID if available, otherwise generate one
+    const businessId = analysisResult.extractedData?.shipmentId || 
+      `SH-${shipmentType === 'incoming' ? 'IN' : 'OUT'}-${String(Date.now()).slice(-6)}`
+    
+    console.log("Using shipment ID:", businessId);
     
     const shipmentData = {
       id: businessId, // Required unique business ID in proper format
@@ -61,16 +64,30 @@ export async function POST(request: NextRequest) {
       price: analysisResult.extractedData?.price || 0, // Use extracted price or default to 0
       description: analysisResult.summary || 'Email-analyzed shipment',
       destination: analysisResult.extractedData?.destination || 'warehouse-A',
-      vendor: shipmentType === 'incoming' ? (analysisResult.extractedData?.carrier || 'Email Vendor') : undefined,
-      customer: shipmentType === 'outgoing' ? (analysisResult.extractedData?.destination || 'Email Customer') : undefined,
+      vendor: shipmentType === 'incoming' ? (analysisResult.extractedData?.vendor || analysisResult.extractedData?.carrier || 'Email Vendor') : undefined,
+      customer: shipmentType === 'outgoing' ? (analysisResult.extractedData?.customer || analysisResult.extractedData?.destination || 'Email Customer') : undefined,
       eta: analysisResult.extractedData?.estimatedDelivery ? 
         new Date(analysisResult.extractedData.estimatedDelivery) : undefined,
+      // Save additional fields at top level for form accessibility
+      trackingNumber: analysisResult.extractedData?.trackingNumber,
+      driver: analysisResult.extractedData?.driver,
+      vessel: analysisResult.extractedData?.vessel,
+      vehicle: analysisResult.extractedData?.vehicle,
+      port: analysisResult.extractedData?.port,
+      address: analysisResult.extractedData?.address,
       // Store email-specific data in emailMetadata
       emailMetadata: {
         emailId: emailData.id,
         trackingNumber: analysisResult.extractedData?.trackingNumber,
         shipmentId: analysisResult.extractedData?.shipmentId,
         carrier: analysisResult.extractedData?.carrier,
+        vendor: analysisResult.extractedData?.vendor,
+        customer: analysisResult.extractedData?.customer,
+        driver: analysisResult.extractedData?.driver,
+        vessel: analysisResult.extractedData?.vessel,
+        vehicle: analysisResult.extractedData?.vehicle,
+        port: analysisResult.extractedData?.port,
+        address: analysisResult.extractedData?.address,
         urgency: analysisResult.extractedData?.urgency,
         actionRequired: analysisResult.extractedData?.actionRequired,
         notes: analysisResult.extractedData?.notes,

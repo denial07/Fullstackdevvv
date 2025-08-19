@@ -22,6 +22,12 @@ export interface ShipmentDoc extends Document {
     newEta?: Date;
     deliveredDate?: Date;
     shippingDate?: Date;
+    trackingNumber?: string;
+    driver?: string;
+    vessel?: string;
+    vehicle?: string;
+    port?: string;
+    address?: string;
     createdAt?: Date;
     updatedAt?: Date;
     emailMetadata?: {
@@ -29,6 +35,13 @@ export interface ShipmentDoc extends Document {
         trackingNumber?: string;
         shipmentId?: string;
         carrier?: string;
+        vendor?: string;
+        customer?: string;
+        driver?: string;
+        vessel?: string;
+        vehicle?: string;
+        port?: string;
+        address?: string;
         urgency?: string;
         actionRequired?: boolean;
         notes?: string;
@@ -71,11 +84,26 @@ const ShipmentSchema = new Schema<ShipmentDoc>(
         deliveredDate: { type: Date, set: toDate },
         shippingDate: { type: Date, set: toDate },
 
+        // Additional top-level fields for form access
+        trackingNumber: String,
+        driver: String,
+        vessel: String,
+        vehicle: String,
+        port: String,
+        address: String,
+
         emailMetadata: {
             emailId: String,
             trackingNumber: String,
             shipmentId: String,
             carrier: String,
+            vendor: String,
+            customer: String,
+            driver: String,
+            vessel: String,
+            vehicle: String,
+            port: String,
+            address: String,
             urgency: String,
             actionRequired: Boolean,
             notes: String,
