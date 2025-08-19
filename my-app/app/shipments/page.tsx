@@ -11,7 +11,7 @@ import Link from "next/link"
 import { UserNav } from "@/components/user-nav"
 import { Edit } from "lucide-react"
 import IncomingShipmentCard from "@/components/IncomingShipmentCard";
-import OutgoingShipmentCard from "@/components/OutgoingShipmentCard";
+import OutgoingShipmentCard from "@/components/InternalShipmentCard";
 
 // app/shipments/page.tsx  (Server Component)
 

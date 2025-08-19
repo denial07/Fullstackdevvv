@@ -14,36 +14,11 @@ function pick<T = any>(obj: AnyObj, keys: string[], fallback?: T): T | undefined
     return fallback;
 }
 
-// ---- helpers (single source of truth) ----
 function parseDateLike(v: any): Date | null {
-    if (v === 0 || v === "0" || v === null || v === undefined || v === "") return null;
+    if (!v) return null;
     const d = v instanceof Date ? v : new Date(v);
-    if (isNaN(d.getTime())) return null;
-    const year = d.getUTCFullYear();
-    // treat epoch/old placeholder years as "no date"
-    if (d.getTime() === 0 || year < 2000) return null;
-    return d;
+    return isNaN(d.getTime()) ? null : d;
 }
-
-function truthy(v: any): boolean {
-    if (typeof v === "string") {
-        const t = v.trim().toLowerCase();
-        return ["true", "yes", "y", "1", "delivered", "received", "completed"].includes(t);
-    }
-    return !!v;
-}
-
-type ShipStatus = "Delivered" | "In Transit" | "Delayed";
-
-function normalizeStatus(s?: string): ShipStatus | undefined {
-    if (!s) return;
-    const t = s.toLowerCase().trim();
-    if (/(delivered|completed|received|arrived)/.test(t)) return "Delivered";
-    if (/(delayed|late|held|exception)/.test(t)) return "Delayed";
-    if (/(in\s*transit|shipped|shipping|out for delivery|processing|dispatch)/.test(t)) return "In Transit";
-    return undefined;
-}
-// -----------------------------------------
 
 const currencySGD = new Intl.NumberFormat("en-SG", {
     style: "currency",
@@ -51,11 +26,12 @@ const currencySGD = new Intl.NumberFormat("en-SG", {
     maximumFractionDigits: 2,
 });
 
-export default function IncomingShipmentCard({ shipment }: { shipment: AnyObj }) {
-    // IDs / labels
+export default function InternalShipmentCard({ shipment }: { shipment: AnyObj }) {
+    // IDs / labels (support both old and new keys)
     const displayId =
         pick<string>(shipment, ["shipmentid", "id", "trackingnumber", "orderid"]) ??
-        shipment?._id ?? "—";
+        shipment?._id ??
+        "—";
 
     // Normalise vendor (could be object)
     const vendorRaw = pick<any>(shipment, ["vendor", "supplier"]);
@@ -69,11 +45,15 @@ export default function IncomingShipmentCard({ shipment }: { shipment: AnyObj })
     const destination =
         typeof destRaw === "string"
             ? destRaw
-            : [destRaw?.line1, destRaw?.city, destRaw?.country].filter(Boolean).join(", ") || "—";
+            : [destRaw?.line1, destRaw?.city, destRaw?.country]
+                .filter(Boolean)
+                .join(", ") || "—";
 
     // Prefer text description; else summarise items array
     const textDesc = pick<any>(shipment, ["description", "notes"]);
-    const items: AnyObj[] | null = Array.isArray(shipment?.items) ? shipment.items : null;
+    const items: AnyObj[] | null = Array.isArray(shipment?.items)
+        ? shipment.items
+        : null;
 
     const description =
         typeof textDesc === "string" && textDesc.trim() !== ""
@@ -90,10 +70,18 @@ export default function IncomingShipmentCard({ shipment }: { shipment: AnyObj })
                     .join(", ")
                 : "—";
 
-    // Dates (using the corrected parser)
-    const eta = parseDateLike(pick<any>(shipment, ["estimateddelivery", "eta", "arrival", "deliveryeta"])) ?? null;
-    const newEta = parseDateLike(pick<any>(shipment, ["revisedeta", "neweta", "eta_updated"])) ?? null;
-    const deliveredDate = parseDateLike(pick<any>(shipment, ["delivereddate", "deliverydate", "receiveddate"])) ?? null;
+    // Dates
+    const eta =
+        parseDateLike(
+            pick<any>(shipment, ["estimateddelivery", "eta", "arrival", "deliveryeta"])
+        ) ?? null;
+
+    const newEta =
+        parseDateLike(pick<any>(shipment, ["revisedeta", "neweta", "eta_updated"])) ??
+        null;
+
+    const deliveredDate =
+        parseDateLike(pick<any>(shipment, ["delivereddate", "deliverydate"])) ?? null;
 
     // Value (fallback to sum of items if field missing)
     const declaredValueField = Number(
@@ -101,34 +89,24 @@ export default function IncomingShipmentCard({ shipment }: { shipment: AnyObj })
     );
     const itemsTotal =
         items?.reduce(
-            (sum, it) => sum + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 0),
+            (sum, it) =>
+                sum +
+                (Number(it.unitPrice) || 0) * (Number(it.quantity) || 0),
             0
         ) ?? 0;
-    const declaredValue = (isNaN(declaredValueField) ? 0 : declaredValueField) || itemsTotal || 0;
+    const declaredValue =
+        (isNaN(declaredValueField) ? 0 : declaredValueField) || itemsTotal || 0;
 
-    // ---- Status logic (respect explicit status/flags first) ----
-    const statusRaw = pick<string>(shipment, ["status", "deliverystatus", "shipmentstatus", "state"]);
-    const statusFromData = normalizeStatus(statusRaw);
-    const deliveredFlag = truthy(
-        pick<any>(shipment, ["delivered", "isdelivered", "received", "isreceived", "completed", "iscompleted"])
-    );
-
-    const GRACE_MS = 24 * 60 * 60 * 1000; // 24h
-    const now = Date.now();
-
-    let computedStatus: ShipStatus;
-    if (deliveredFlag || deliveredDate || statusFromData === "Delivered") {
+    // Status
+    const now = new Date();
+    let computedStatus = "In Transit";
+    if (deliveredDate) {
         computedStatus = "Delivered";
-    } else if (statusFromData) {
-        computedStatus = statusFromData; // trust backend if not Delivered
-    } else if (eta) {
-        const lateNow = now > eta.getTime() + GRACE_MS;
-        const etaPushed = !!(newEta && newEta > eta);
-        computedStatus = lateNow || etaPushed ? "Delayed" : "In Transit";
-    } else {
+    } else if (eta && now < eta) {
         computedStatus = "In Transit";
+    } else if ((newEta && eta && newEta > eta) || (eta && now > eta && !newEta)) {
+        computedStatus = "Delayed";
     }
-    // ------------------------------------------------------------
 
     return (
         <div className="p-4 border rounded-lg">
