@@ -5,22 +5,23 @@ import { Edit } from "lucide-react";
 import Link from "next/link";
 
 type AnyObj = Record<string, any>;
+type ShipStatus = "Delivered" | "In Transit" | "Delayed";
 
-function pick<T = any>(obj: AnyObj, keys: string[], fallback?: T): T | undefined {
-    for (const k of keys) {
-        const v = obj?.[k];
+/* ---------- helpers ---------- */
+function pickDeep<T = any>(obj: AnyObj, paths: string[], fallback?: T): T | undefined {
+    for (const path of paths) {
+        const v = path.split(".").reduce<any>((acc, k) => (acc == null ? acc : acc[k]), obj);
         if (v !== undefined && v !== null && v !== "") return v as T;
     }
     return fallback;
 }
 
-// ---- helpers (single source of truth) ----
 function parseDateLike(v: any): Date | null {
     if (v === 0 || v === "0" || v === null || v === undefined || v === "") return null;
     const d = v instanceof Date ? v : new Date(v);
     if (isNaN(d.getTime())) return null;
     const year = d.getUTCFullYear();
-    // treat epoch/old placeholder years as "no date"
+    // treat epoch/old placeholders as "no date"
     if (d.getTime() === 0 || year < 2000) return null;
     return d;
 }
@@ -33,8 +34,6 @@ function truthy(v: any): boolean {
     return !!v;
 }
 
-type ShipStatus = "Delivered" | "In Transit" | "Delayed";
-
 function normalizeStatus(s?: string): ShipStatus | undefined {
     if (!s) return;
     const t = s.toLowerCase().trim();
@@ -43,36 +42,49 @@ function normalizeStatus(s?: string): ShipStatus | undefined {
     if (/(in\s*transit|shipped|shipping|out for delivery|processing|dispatch)/.test(t)) return "In Transit";
     return undefined;
 }
-// -----------------------------------------
 
 const currencySGD = new Intl.NumberFormat("en-SG", {
     style: "currency",
     currency: "SGD",
     maximumFractionDigits: 2,
 });
+/* -------------------------------- */
 
 export default function IncomingShipmentCard({ shipment }: { shipment: AnyObj }) {
-    // IDs / labels
+    // ID
     const displayId =
-        pick<string>(shipment, ["shipmentid", "id", "trackingnumber", "orderid"]) ??
-        shipment?._id ?? "—";
+        pickDeep<string>(shipment, ["shipmentid", "id", "trackingnumber", "orderid", "_id"]) ?? "—";
 
-    // Normalise vendor (could be object)
-    const vendorRaw = pick<any>(shipment, ["vendor", "supplier"]);
+    // Vendor (string or object)
+    const vendorRaw = pickDeep<any>(shipment, [
+        "vendor", "supplier",
+        "vendor.name", "supplier.name",
+        "vendor.companyName", "supplier.companyName",
+        "shipper.name", "sender.name"
+    ]);
     const vendor =
         typeof vendorRaw === "string"
             ? vendorRaw
-            : vendorRaw?.name ?? vendorRaw?.label ?? "—";
+            : vendorRaw?.name ?? vendorRaw?.companyName ?? vendorRaw?.label ?? "—";
 
-    // Normalise destination (string or object)
-    const destRaw = pick<any>(shipment, ["destination", "address", "city"]);
+    // Destination (string or object)
+    const dest =
+        pickDeep<any>(shipment, ["destination", "address", "city"]) ??
+        pickDeep<any>(shipment, [
+            "shippingAddress", "shipping.address", "destinationAddress"
+        ]);
+
     const destination =
-        typeof destRaw === "string"
-            ? destRaw
-            : [destRaw?.line1, destRaw?.city, destRaw?.country].filter(Boolean).join(", ") || "—";
+        typeof dest === "string"
+            ? dest
+            : [
+                pickDeep<string>(dest ?? shipment, ["line1", "shippingAddress.line1"]),
+                pickDeep<string>(dest ?? shipment, ["city", "shippingAddress.city"]),
+                pickDeep<string>(dest ?? shipment, ["country", "shippingAddress.country"]),
+            ].filter(Boolean).join(", ") || "—";
 
-    // Prefer text description; else summarise items array
-    const textDesc = pick<any>(shipment, ["description", "notes"]);
+    // Description (prefer text; else summarise items)
+    const textDesc = pickDeep<any>(shipment, ["description", "notes", "summary", "remarks"]);
     const items: AnyObj[] | null = Array.isArray(shipment?.items) ? shipment.items : null;
 
     const description =
@@ -90,14 +102,29 @@ export default function IncomingShipmentCard({ shipment }: { shipment: AnyObj })
                     .join(", ")
                 : "—";
 
-    // Dates (using the corrected parser)
-    const eta = parseDateLike(pick<any>(shipment, ["estimateddelivery", "eta", "arrival", "deliveryeta"])) ?? null;
-    const newEta = parseDateLike(pick<any>(shipment, ["revisedeta", "neweta", "eta_updated"])) ?? null;
-    const deliveredDate = parseDateLike(pick<any>(shipment, ["delivereddate", "deliverydate", "receiveddate"])) ?? null;
+    // Dates
+    const eta =
+        parseDateLike(
+            pickDeep<any>(shipment, [
+                "estimateddelivery", "eta", "arrival", "deliveryeta",
+                "estimatedDelivery", "expectedDelivery", "estimatedArrival", "expectedArrival",
+                "etaDate", "delivery.eta", "dates.eta"
+            ])
+        ) ?? null;
 
-    // Value (fallback to sum of items if field missing)
+    const newEta =
+        parseDateLike(
+            pickDeep<any>(shipment, ["revisedeta", "neweta", "eta_updated", "delivery.revisedEta"])
+        ) ?? null;
+
+    const deliveredDate =
+        parseDateLike(
+            pickDeep<any>(shipment, ["delivereddate", "deliverydate", "receiveddate", "status.deliveredAt"])
+        ) ?? null;
+
+    // Value (field or sum of items)
     const declaredValueField = Number(
-        pick<any>(shipment, ["declaredvalue", "decalredvalue", "value", "price", "totalvalue"], 0)
+        pickDeep<any>(shipment, ["declaredvalue", "decalredvalue", "value", "price", "totalvalue"], 0)
     );
     const itemsTotal =
         items?.reduce(
@@ -106,29 +133,29 @@ export default function IncomingShipmentCard({ shipment }: { shipment: AnyObj })
         ) ?? 0;
     const declaredValue = (isNaN(declaredValueField) ? 0 : declaredValueField) || itemsTotal || 0;
 
-    // ---- Status logic (respect explicit status/flags first) ----
-    const statusRaw = pick<string>(shipment, ["status", "deliverystatus", "shipmentstatus", "state"]);
-    const statusFromData = normalizeStatus(statusRaw);
+    // Status (respect explicit flags first)
+    const statusFromData = normalizeStatus(
+        pickDeep<string>(shipment, ["status", "deliverystatus", "shipmentstatus", "state"])
+    );
     const deliveredFlag = truthy(
-        pick<any>(shipment, ["delivered", "isdelivered", "received", "isreceived", "completed", "iscompleted"])
+        pickDeep<any>(shipment, ["delivered", "isdelivered", "received", "isreceived", "completed", "iscompleted"])
     );
 
     const GRACE_MS = 24 * 60 * 60 * 1000; // 24h
-    const now = Date.now();
+    const nowMs = Date.now();
 
     let computedStatus: ShipStatus;
     if (deliveredFlag || deliveredDate || statusFromData === "Delivered") {
         computedStatus = "Delivered";
     } else if (statusFromData) {
-        computedStatus = statusFromData; // trust backend if not Delivered
+        computedStatus = statusFromData;
     } else if (eta) {
-        const lateNow = now > eta.getTime() + GRACE_MS;
+        const lateNow = nowMs > eta.getTime() + GRACE_MS;
         const etaPushed = !!(newEta && newEta > eta);
         computedStatus = lateNow || etaPushed ? "Delayed" : "In Transit";
     } else {
         computedStatus = "In Transit";
     }
-    // ------------------------------------------------------------
 
     return (
         <div className="p-4 border rounded-lg">
