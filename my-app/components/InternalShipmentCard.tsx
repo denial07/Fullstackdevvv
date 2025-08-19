@@ -50,7 +50,7 @@ const currencySGD = new Intl.NumberFormat("en-SG", {
 });
 /* -------------------------------- */
 
-export default function IncomingShipmentCard({ shipment }: { shipment: AnyObj }) {
+export default function InternalShipmentCard({ shipment }: { shipment: AnyObj }) {
     // ID
     const displayId =
         pickDeep<string>(shipment, ["shipmentid", "id", "trackingnumber", "orderid", "_id"]) ?? "—";

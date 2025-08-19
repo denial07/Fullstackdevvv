@@ -1,41 +1,85 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useRouter } from "next/navigation"
+import type React from "react";
+import { useRouter } from "next/navigation";
 import ImportExcelDialog from "@/components/imports/ImportExcelDialog";
 
+import { useState, useMemo } from "react";
+import Link from "next/link";
+import { format } from "date-fns";
+import {
+    ArrowLeft,
+    CalendarIcon,
+    Save,
+    Plus,
+    Trash2,
+    Upload,
+} from "lucide-react";
 
-import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ArrowLeft, CalendarIcon, Save, Plus, Trash2, Upload } from "lucide-react"
-import { format } from "date-fns"
-import Link from "next/link"
-import { UserNav } from "@/components/user-nav"
+import { UserNav } from "@/components/user-nav";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface ShipmentItem {
-    id: string
-    description: string
-    quantity: number
-    unit: string
-    unitPrice: number
+    id: string;
+    description: string;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+}
+
+type OtherField = { id: string; key: string; value: string };
+
+const STATUS_OPTIONS = [
+    "Processing",
+    "In Transit",
+    "Customs Clearance",
+    "Delayed",
+    "Arrived",
+    "Delivered",
+] as const;
+
+function smartParse(input: string): any {
+    if (input.trim() === "") return "";
+    // boolean
+    if (/^(true|false)$/i.test(input)) return input.toLowerCase() === "true";
+    // number
+    const asNum = Number(input);
+    if (!Number.isNaN(asNum) && input.trim() !== "") return asNum;
+    // ISO-ish date
+    const d = new Date(input);
+    if (!Number.isNaN(d.getTime()) && /^\d{4}-\d{2}-\d{2}/.test(input)) return d.toISOString();
+    // JSON object/array/quoted string
+    if (/^[\[\{"]/.test(input.trim())) {
+        try {
+            return JSON.parse(input);
+        } catch {
+            // noop
+        }
+    }
+    return input;
 }
 
 export default function AddShipmentPage() {
-    const [shipmentType, setShipmentType] = useState<"incoming" | "outgoing" | "">("")
-    const [shippingDate, setShippingDate] = useState<Date>()
-    const [expectedDate, setExpectedDate] = useState<Date>()
-    const [isLoading, setIsLoading] = useState(false)
+    const router = useRouter();
+
+    const [shipmentType, setShipmentType] = useState<"incoming" | "outgoing" | "">("");
+    const [status, setStatus] = useState<string>("In Transit"); // sensible default for new incoming
+    const [shippingDate, setShippingDate] = useState<Date>();
+    const [expectedDate, setExpectedDate] = useState<Date>();
+    const [isLoading, setIsLoading] = useState(false);
+
     const [items, setItems] = useState<ShipmentItem[]>([
         { id: "1", description: "", quantity: 0, unit: "m³", unitPrice: 0 },
-    ])
+    ]);
 
+    // Core fields (kept but you can extend via Other Attributes)
     const [formData, setFormData] = useState({
         shipmentId: "",
         type: "",
@@ -49,7 +93,28 @@ export default function AddShipmentPage() {
         address: "",
         priority: "Standard",
         notes: "",
-    })
+        transfer_shipment_id: "", // optional dedupe key for your inventory sync
+    });
+
+    // Dynamic “Other Attributes”
+    const [otherFields, setOtherFields] = useState<OtherField[]>([
+        // start empty; user can add any keys they need
+    ]);
+
+    const addOtherField = () => {
+        setOtherFields((prev) => [
+            ...prev,
+            { id: `fld-${Date.now()}`, key: "", value: "" },
+        ]);
+    };
+
+    const removeOtherField = (id: string) => {
+        setOtherFields((prev) => prev.filter((f) => f.id !== id));
+    };
+
+    const updateOtherField = (id: string, patch: Partial<OtherField>) => {
+        setOtherFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+    };
 
     const addItem = () => {
         const newItem: ShipmentItem = {
@@ -58,57 +123,93 @@ export default function AddShipmentPage() {
             quantity: 0,
             unit: "m³",
             unitPrice: 0,
-        }
-        setItems([...items, newItem])
-    }
+        };
+        setItems((prev) => [...prev, newItem]);
+    };
 
     const removeItem = (id: string) => {
-        if (items.length > 1) {
-            setItems(items.filter((item) => item.id !== id))
-        }
-    }
+        setItems((prev) => (prev.length > 1 ? prev.filter((i) => i.id !== id) : prev));
+    };
 
     const updateItem = (id: string, field: keyof ShipmentItem, value: any) => {
-        setItems(items.map((item) => (item.id === id ? { ...item, [field]: value } : item)))
-    }
+        setItems((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
+    };
 
-    const calculateTotal = () => {
-        return items.reduce((total, item) => total + item.quantity * item.unitPrice, 0)
-    }
-    const router = useRouter()
+    const calculateTotal = useMemo(() => {
+        return items.reduce((total, item) => total + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0);
+    }, [items]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const buildPayload = () => {
+        // Base id (user entered or generated)
+        const id =
+            formData.shipmentId ||
+            `SH-${shipmentType === "incoming" ? "IN" : "OUT"}-${Date.now()}`;
+
+        // Start with core predictable fields
+        const base: Record<string, any> = {
+            id,
+            type: shipmentType,
+            status,
+            vendor: formData.vendor || "",
+            customer: formData.customer || "",
+            trackingNumber: formData.trackingNumber || "",
+            vessel: formData.vessel || "",
+            driver: formData.driver || "",
+            vehicle: formData.vehicle || "",
+            port: formData.port || "",
+            address: formData.address || "",
+            priority: formData.priority || "Standard",
+            notes: formData.notes || "",
+            transfer_shipment_id: formData.transfer_shipment_id || undefined,
+            shippingDate: shippingDate ? shippingDate.toISOString() : undefined,
+            arrival: expectedDate ? expectedDate.toISOString() : undefined, // you used "arrival" earlier
+            description: items.map((i) => `${i.description} x ${i.quantity}`).join(", "),
+            items,
+            price: calculateTotal,
+        };
+
+        // Merge dynamic attributes (skip empty keys)
+        for (const f of otherFields) {
+            const k = f.key.trim();
+            if (!k) continue;
+            base[k] = smartParse(f.value);
+        }
+
+        // Clean undefined so payload is tidy
+        Object.keys(base).forEach((k) => base[k] === undefined && delete base[k]);
+        return base;
+    };
+
+    const handleSubmit: React.FormEventHandler = async (e) => {
         e.preventDefault();
         setIsLoading(true);
 
-        const payload = {
-            id: formData.shipmentId || `SH-${shipmentType === "incoming" ? "IN" : "OUT"}-${Date.now()}`,
-            type: shipmentType,
-            vendor: formData.vendor || "",           // only if incoming
-            customer: formData.customer || "",       // only if outgoing
-            description: items.map((i) => `${i.description} x ${i.quantity}`).join(", "),
-            status: shipmentType === "incoming" ? "In Transit" : "Preparing",
-            arrival: expectedDate?.toISOString(),    // matches "arrival" field
-            price: calculateTotal(),
-        };
+        try {
+            const payload = buildPayload();
 
-        const res = await fetch("/api/shipments", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
+            const res = await fetch("/api/shipments", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
 
-        if (!res.ok) {
-            const error = await res.json();
-            console.error("❌ Shipment create failed:", error);
-            throw new Error("Failed to create shipment");
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                console.error("❌ Shipment create failed:", err);
+                throw new Error("Failed to create shipment");
+            }
+
+            const created = await res.json();
+            console.log("✅ Shipment saved:", created);
+            alert("✅ Shipment added!");
+            router.push("/shipments");
+        } catch (err) {
+            console.error(err);
+            alert("❌ Add failed.");
+        } finally {
+            setIsLoading(false);
         }
-
-        const createdShipment = await res.json();
-        console.log("✅ Shipment saved:", createdShipment);
-        setIsLoading(false);
     };
-
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -152,7 +253,6 @@ export default function AddShipmentPage() {
                 </div>
             </header>
 
-
             <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Basic Information */}
@@ -162,7 +262,7 @@ export default function AddShipmentPage() {
                             <CardDescription>Enter the basic shipment details</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="shipmentId">Shipment ID</Label>
                                     <Input
@@ -172,6 +272,23 @@ export default function AddShipmentPage() {
                                         onChange={(e) => setFormData({ ...formData, shipmentId: e.target.value })}
                                     />
                                 </div>
+
+                                <div className="space-y-2">
+                                    <Label>Status</Label>
+                                    <Select value={status} onValueChange={setStatus}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {STATUS_OPTIONS.map((s) => (
+                                                <SelectItem key={s} value={s}>
+                                                    {s}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
                                 <div className="space-y-2">
                                     <Label htmlFor="type">Shipment Type</Label>
                                     <Select
@@ -189,7 +306,17 @@ export default function AddShipmentPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="transfer_shipment_id">Transfer Shipment ID (optional)</Label>
+                                    <Input
+                                        id="transfer_shipment_id"
+                                        placeholder="e.g. TR-2025-001"
+                                        value={formData.transfer_shipment_id}
+                                        onChange={(e) => setFormData({ ...formData, transfer_shipment_id: e.target.value })}
+                                    />
+                                </div>
+
                                 {shipmentType === "incoming" ? (
                                     <div className="space-y-2">
                                         <Label htmlFor="vendor">Vendor/Supplier</Label>
@@ -227,6 +354,7 @@ export default function AddShipmentPage() {
                                         </Select>
                                     </div>
                                 )}
+
                                 <div className="space-y-2">
                                     <Label htmlFor="trackingNumber">Tracking Number</Label>
                                     <Input
@@ -238,7 +366,70 @@ export default function AddShipmentPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {shipmentType === "incoming" ? (
+                                    <>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="vessel">Vessel Name</Label>
+                                            <Input
+                                                id="vessel"
+                                                placeholder="Enter vessel name"
+                                                value={formData.vessel}
+                                                onChange={(e) => setFormData({ ...formData, vessel: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="port">Port of Entry</Label>
+                                            <Select
+                                                value={formData.port}
+                                                onValueChange={(value) => setFormData({ ...formData, port: value })}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select port" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="port-singapore">Port of Singapore</SelectItem>
+                                                    <SelectItem value="jurong-port">Jurong Port</SelectItem>
+                                                    <SelectItem value="pasir-panjang">Pasir Panjang Terminal</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="driver">Driver Name</Label>
+                                            <Input
+                                                id="driver"
+                                                placeholder="Enter driver name"
+                                                value={formData.driver}
+                                                onChange={(e) => setFormData({ ...formData, driver: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="vehicle">Vehicle Number</Label>
+                                            <Input
+                                                id="vehicle"
+                                                placeholder="Enter vehicle number"
+                                                value={formData.vehicle}
+                                                onChange={(e) => setFormData({ ...formData, vehicle: e.target.value })}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+
+                                <div className="space-y-2 md:col-span-3">
+                                    <Label htmlFor="address">Address</Label>
+                                    <Textarea
+                                        id="address"
+                                        placeholder="Enter address"
+                                        value={formData.address}
+                                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-2">
                                     <Label>Shipping Date</Label>
                                     <Popover>
@@ -267,75 +458,23 @@ export default function AddShipmentPage() {
                                         </PopoverContent>
                                     </Popover>
                                 </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="priority">Priority</Label>
+                                    <Select
+                                        value={formData.priority}
+                                        onValueChange={(value) => setFormData({ ...formData, priority: value })}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Standard">Standard</SelectItem>
+                                            <SelectItem value="High">High Priority</SelectItem>
+                                            <SelectItem value="Urgent">Urgent</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Transport Details */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Transport Details</CardTitle>
-                            <CardDescription>
-                                {shipmentType === "incoming" ? "Vessel and port information" : "Driver and vehicle information"}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {shipmentType === "incoming" ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="vessel">Vessel Name</Label>
-                                        <Input
-                                            id="vessel"
-                                            placeholder="Enter vessel name"
-                                            value={formData.vessel}
-                                            onChange={(e) => setFormData({ ...formData, vessel: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="port">Port of Entry</Label>
-                                        <Select value={formData.port} onValueChange={(value) => setFormData({ ...formData, port: value })}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select port" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="port-singapore">Port of Singapore</SelectItem>
-                                                <SelectItem value="jurong-port">Jurong Port</SelectItem>
-                                                <SelectItem value="pasir-panjang">Pasir Panjang Terminal</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="driver">Driver Name</Label>
-                                        <Input
-                                            id="driver"
-                                            placeholder="Enter driver name"
-                                            value={formData.driver}
-                                            onChange={(e) => setFormData({ ...formData, driver: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="vehicle">Vehicle Number</Label>
-                                        <Input
-                                            id="vehicle"
-                                            placeholder="Enter vehicle number"
-                                            value={formData.vehicle}
-                                            onChange={(e) => setFormData({ ...formData, vehicle: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className="space-y-2 md:col-span-2">
-                                        <Label htmlFor="address">Delivery Address</Label>
-                                        <Textarea
-                                            id="address"
-                                            placeholder="Enter delivery address"
-                                            value={formData.address}
-                                            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                            )}
                         </CardContent>
                     </Card>
 
@@ -346,7 +485,7 @@ export default function AddShipmentPage() {
                             <CardDescription>Add items being shipped</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {items.map((item, index) => (
+                            {items.map((item) => (
                                 <div key={item.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 p-4 border rounded-lg">
                                     <div className="md:col-span-2">
                                         <Label>Item Description</Label>
@@ -376,6 +515,8 @@ export default function AddShipmentPage() {
                                                 <SelectItem value="pcs">Pieces</SelectItem>
                                                 <SelectItem value="kg">Kilograms</SelectItem>
                                                 <SelectItem value="tons">Tons</SelectItem>
+                                                <SelectItem value="units">Units</SelectItem>
+                                                <SelectItem value="shipment">Shipment</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -408,45 +549,57 @@ export default function AddShipmentPage() {
                                     Add Item
                                 </Button>
                                 <div className="text-right">
-                                    <p className="text-lg font-semibold">Total Value: S${calculateTotal().toLocaleString()}</p>
+                                    <p className="text-lg font-semibold">
+                                        Total Value: S${calculateTotal.toLocaleString()}
+                                    </p>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* Additional Information */}
+                    {/* Other Attributes (fully dynamic) */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Additional Information</CardTitle>
-                            <CardDescription>Priority and special notes</CardDescription>
+                            <CardTitle>Other Attributes</CardTitle>
+                            <CardDescription>Add any extra fields you want to store on this shipment</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="priority">Priority</Label>
-                                    <Select
-                                        value={formData.priority}
-                                        onValueChange={(value) => setFormData({ ...formData, priority: value })}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="Standard">Standard</SelectItem>
-                                            <SelectItem value="High">High Priority</SelectItem>
-                                            <SelectItem value="Urgent">Urgent</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                        <CardContent className="space-y-3">
+                            {otherFields.length === 0 && (
+                                <p className="text-sm text-muted-foreground">
+                                    No additional fields yet. Click “Add Attribute” to include any custom data (e.g. <code>containerNo</code>, <code>customsRef</code>, <code>hazmat</code>, etc).
+                                </p>
+                            )}
+                            {otherFields.map((f) => (
+                                <div key={f.id} className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                    <div className="md:col-span-2">
+                                        <Label>Key</Label>
+                                        <Input
+                                            placeholder="e.g. containerNo"
+                                            value={f.key}
+                                            onChange={(e) => updateOtherField(f.id, { key: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-3">
+                                        <Label>Value</Label>
+                                        <Input
+                                            placeholder='Try values like 123, true, 2025-08-19, {"a":1}'
+                                            value={f.value}
+                                            onChange={(e) => updateOtherField(f.id, { value: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-5 flex justify-end -mt-1">
+                                        <Button variant="outline" size="sm" type="button" onClick={() => removeOtherField(f.id)}>
+                                            <Trash2 className="h-4 w-4 mr-1" />
+                                            Remove
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="notes">Special Notes</Label>
-                                <Textarea
-                                    id="notes"
-                                    placeholder="Enter any special instructions or notes"
-                                    value={formData.notes}
-                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                />
+                            ))}
+                            <div className="flex justify-between items-center pt-2">
+                                <Button type="button" variant="outline" onClick={addOtherField}>
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Add Attribute
+                                </Button>
                             </div>
                         </CardContent>
                     </Card>
@@ -464,5 +617,5 @@ export default function AddShipmentPage() {
                 </form>
             </main>
         </div>
-    )
+    );
 }
