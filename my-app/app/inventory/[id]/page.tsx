@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { toast } from "sonner"
 import { Building2, MapPin, Mail, Package, AlertTriangle, CheckCircle, Loader2, RefreshCw } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -26,7 +26,7 @@ interface InventoryItem {
 }
 
 // Enhanced material data with supplier details based on existing suppliers
-const supplierDetails: Record<string, any> = {
+const SUPPLIER_DETAILS = {
   "Malaysian Timber Co.": {
     location: "Kuala Lumpur, Malaysia",
     email: "contact@malaytimber.com",
@@ -62,103 +62,81 @@ const supplierDetails: Record<string, any> = {
     email: "contact@industrialwood.sg",
     country: "Singapore",
   },
-}
+} as const
 
 // Material descriptions based on category and type
-const getMaterialDescription = (item: string, category: string): string => {
-  const descriptions: Record<string, string> = {
-    "Teak Wood Planks":
-      "Premium quality teak wood planks sourced from sustainable forests. Ideal for high-end furniture and construction projects with excellent durability and natural weather resistance.",
-    "Pine Wood Boards":
-      "High-quality pine wood boards perfect for construction and carpentry work. Sustainably sourced with consistent grain patterns and excellent workability.",
-    "Oak Wood Sheets":
-      "Premium oak wood sheets with excellent grain patterns. Perfect for furniture making and interior design applications with superior strength and beautiful finish.",
-    "Bamboo Planks":
-      "Eco-friendly bamboo planks offering sustainable alternative to traditional hardwoods. Fast-growing renewable resource with excellent strength-to-weight ratio.",
-    "Mahogany Boards":
-      "Luxury mahogany boards with rich color and fine grain. Ideal for high-end furniture, cabinetry, and decorative applications with natural resistance to decay.",
-    "Plywood Sheets":
-      "Engineered plywood sheets offering consistent quality and dimensional stability. Perfect for construction, furniture making, and various industrial applications.",
-    "Cedar Planks":
-      "Aromatic cedar planks with natural insect-repelling properties. Excellent for outdoor applications, closets, and specialty woodworking projects.",
-    "Birch Wood Panels":
-      "High-quality birch panels with smooth surface and consistent grain. Ideal for furniture making, cabinetry, and interior finishing applications.",
-    "Rubber Wood Blocks":
-      "Sustainable rubber wood blocks from plantation trees. Eco-friendly option with good workability and consistent quality for furniture and construction.",
-    "MDF Boards":
-      "Medium-density fiberboard offering smooth surface and consistent density. Perfect for painted finishes, furniture components, and interior applications.",
-    "Acacia Wood Strips":
-      "Durable acacia wood strips with attractive grain patterns. Excellent for flooring, furniture, and decorative applications with natural durability.",
-    "Particle Board":
-      "Cost-effective particle board for interior applications. Suitable for furniture components, shelving, and construction where painted finishes are desired.",
-  }
-
-  return (
-    descriptions[item] ||
-    `High-quality ${category.toLowerCase()} material suitable for various construction and woodworking applications.`
-  )
-}
+const MATERIAL_DESCRIPTIONS = {
+  "Teak Wood Planks":
+    "Premium quality teak wood planks sourced from sustainable forests. Ideal for high-end furniture and construction projects with excellent durability and natural weather resistance.",
+  "Pine Wood Boards":
+    "High-quality pine wood boards perfect for construction and carpentry work. Sustainably sourced with consistent grain patterns and excellent workability.",
+  "Oak Wood Sheets":
+    "Premium oak wood sheets with excellent grain patterns. Perfect for furniture making and interior design applications with superior strength and beautiful finish.",
+  "Bamboo Planks":
+    "Eco-friendly bamboo planks offering sustainable alternative to traditional hardwoods. Fast-growing renewable resource with excellent strength-to-weight ratio.",
+  "Mahogany Boards":
+    "Luxury mahogany boards with rich color and fine grain. Ideal for high-end furniture, cabinetry, and decorative applications with natural resistance to decay.",
+  "Plywood Sheets":
+    "Engineered plywood sheets offering consistent quality and dimensional stability. Perfect for construction, furniture making, and various industrial applications.",
+  "Cedar Planks":
+    "Aromatic cedar planks with natural insect-repelling properties. Excellent for outdoor applications, closets, and specialty woodworking projects.",
+  "Birch Wood Panels":
+    "High-quality birch panels with smooth surface and consistent grain. Ideal for furniture making, cabinetry, and interior finishing applications.",
+  "Rubber Wood Blocks":
+    "Sustainable rubber wood blocks from plantation trees. Eco-friendly option with good workability and consistent quality for furniture and construction.",
+  "MDF Boards":
+    "Medium-density fiberboard offering smooth surface and consistent density. Perfect for painted finishes, furniture components, and interior applications.",
+  "Acacia Wood Strips":
+    "Durable acacia wood strips with attractive grain patterns. Excellent for flooring, furniture, and decorative applications with natural durability.",
+  "Particle Board":
+    "Cost-effective particle board for interior applications. Suitable for furniture components, shelving, and construction where painted finishes are desired.",
+} as const
 
 // Material specifications based on type
-const getMaterialSpecifications = (item: string, category: string) => {
-  const specs: Record<string, any> = {
-    "Teak Wood Planks": { density: "0.65 g/cm³", moisture: "12-15%", grade: "Grade A", treatment: "Kiln Dried" },
-    "Pine Wood Boards": { density: "0.45 g/cm³", moisture: "10-12%", grade: "Grade B", treatment: "Air Dried" },
-    "Oak Wood Sheets": { density: "0.75 g/cm³", moisture: "8-10%", grade: "Grade A+", treatment: "Kiln Dried" },
-    "Bamboo Planks": { density: "0.60 g/cm³", moisture: "8-12%", grade: "Grade A", treatment: "Carbonized" },
-    "Mahogany Boards": { density: "0.70 g/cm³", moisture: "10-14%", grade: "Grade A", treatment: "Kiln Dried" },
-    "Plywood Sheets": { density: "0.55 g/cm³", moisture: "8-12%", grade: "Grade B", treatment: "Pressed" },
-    "Cedar Planks": { density: "0.35 g/cm³", moisture: "12-16%", grade: "Grade A", treatment: "Air Dried" },
-    "Birch Wood Panels": { density: "0.65 g/cm³", moisture: "8-10%", grade: "Grade A", treatment: "Kiln Dried" },
-    "Rubber Wood Blocks": { density: "0.58 g/cm³", moisture: "10-12%", grade: "Grade B", treatment: "Kiln Dried" },
-    "MDF Boards": { density: "0.75 g/cm³", moisture: "6-8%", grade: "Standard", treatment: "Pressed" },
-    "Acacia Wood Strips": { density: "0.68 g/cm³", moisture: "8-12%", grade: "Grade A", treatment: "Kiln Dried" },
-    "Particle Board": { density: "0.65 g/cm³", moisture: "6-10%", grade: "Standard", treatment: "Pressed" },
-  }
+const MATERIAL_SPECIFICATIONS = {
+  "Teak Wood Planks": { density: "0.65 g/cm³", moisture: "12-15%", grade: "Grade A", treatment: "Kiln Dried" },
+  "Pine Wood Boards": { density: "0.45 g/cm³", moisture: "10-12%", grade: "Grade B", treatment: "Air Dried" },
+  "Oak Wood Sheets": { density: "0.75 g/cm³", moisture: "8-10%", grade: "Grade A+", treatment: "Kiln Dried" },
+  "Bamboo Planks": { density: "0.60 g/cm³", moisture: "8-12%", grade: "Grade A", treatment: "Carbonized" },
+  "Mahogany Boards": { density: "0.70 g/cm³", moisture: "10-14%", grade: "Grade A", treatment: "Kiln Dried" },
+  "Plywood Sheets": { density: "0.55 g/cm³", moisture: "8-12%", grade: "Grade B", treatment: "Pressed" },
+  "Cedar Planks": { density: "0.35 g/cm³", moisture: "12-16%", grade: "Grade A", treatment: "Air Dried" },
+  "Birch Wood Panels": { density: "0.65 g/cm³", moisture: "8-10%", grade: "Grade A", treatment: "Kiln Dried" },
+  "Rubber Wood Blocks": { density: "0.58 g/cm³", moisture: "10-12%", grade: "Grade B", treatment: "Kiln Dried" },
+  "MDF Boards": { density: "0.75 g/cm³", moisture: "6-8%", grade: "Standard", treatment: "Pressed" },
+  "Acacia Wood Strips": { density: "0.68 g/cm³", moisture: "8-12%", grade: "Grade A", treatment: "Kiln Dried" },
+  "Particle Board": { density: "0.65 g/cm³", moisture: "6-10%", grade: "Standard", treatment: "Pressed" },
+} as const
 
-  return specs[item] || { density: "0.60 g/cm³", moisture: "8-12%", grade: "Grade B", treatment: "Standard" }
-}
+const DEFAULT_SPECIFICATION = { density: "0.60 g/cm³", moisture: "8-12%", grade: "Grade B", treatment: "Standard" }
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case "Good":
-      return "bg-green-100 text-green-800"
-    case "Low Stock":
-      return "bg-yellow-100 text-yellow-800"
-    case "Expiring Soon":
-      return "bg-orange-100 text-orange-800"
-    case "Expired":
-      return "bg-red-100 text-red-800"
-    default:
-      return "bg-gray-100 text-gray-800"
+    case "Good": return "bg-green-100 text-green-800"
+    case "Low Stock": return "bg-yellow-100 text-yellow-800"
+    case "Expiring Soon": return "bg-orange-100 text-orange-800"
+    case "Expired": return "bg-red-100 text-red-800"
+    default: return "bg-gray-100 text-gray-800"
   }
 }
 
 const getStatusIcon = (status: string) => {
   switch (status) {
-    case "Good":
-      return <CheckCircle className="h-4 w-4" />
-    case "Low Stock":
-      return <Package className="h-4 w-4" />
-    case "Expiring Soon":
-      return <AlertTriangle className="h-4 w-4" />
-    case "Expired":
-      return <AlertTriangle className="h-4 w-4" />
-    default:
-      return <Package className="h-4 w-4" />
+    case "Good": return <CheckCircle className="h-4 w-4" />
+    case "Low Stock": return <Package className="h-4 w-4" />
+    case "Expiring Soon": return <AlertTriangle className="h-4 w-4" />
+    case "Expired": return <AlertTriangle className="h-4 w-4" />
+    default: return <Package className="h-4 w-4" />
   }
 }
 
 const calculateSuggestedOrder = (currentStock: number, minStock: number, maxStock: number): number => {
-  // If below minimum, suggest ordering to reach maximum capacity
   if (currentStock <= minStock) {
     return maxStock - currentStock
   }
-  // If above minimum but below 75% of max, suggest partial reorder
   if (currentStock < maxStock * 0.75) {
     return Math.ceil((maxStock - currentStock) * 0.8)
   }
-  // Otherwise, suggest standard reorder quantity
   return Math.ceil(maxStock * 0.3)
 }
 
@@ -167,23 +145,11 @@ const calculateActualStatus = (quantity: number, minStock: number, maxStock: num
   const expiry = new Date(expiryDate)
   const daysUntilExpiry = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
-  // Check expiry status first (highest priority)
-  if (daysUntilExpiry < 0) {
-    return "Expired"
-  } else if (daysUntilExpiry <= 30) {
-    return "Expiring Soon"
-  }
-
-  // Then check stock levels with improved logic
-  // Consider it low stock if:
-  // 1. At or below minimum stock threshold, OR
-  // 2. Below 25% of maximum capacity (indicating need to reorder soon)
-  const stockPercentage = (quantity / maxStock) * 100
+  if (daysUntilExpiry < 0) return "Expired"
+  if (daysUntilExpiry <= 30) return "Expiring Soon"
   
-  if (quantity <= minStock || stockPercentage < 25) {
-    return "Low Stock"
-  }
-
+  if (quantity < minStock) return "Low Stock"
+  
   return "Good"
 }
 
@@ -217,7 +183,6 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
       setLoading(true)
       setError(null)
 
-      console.log(`🔄 Fetching material ${resolvedParams.id}...`)
       const response = await fetch(`/api/inventory/${resolvedParams.id}`)
 
       if (!response.ok) {
@@ -231,14 +196,9 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
       }
 
       const data = await response.json()
-      
-      // Calculate the actual status based on current date and stock levels
       const actualStatus = calculateActualStatus(data.quantity, data.minStock, data.maxStock, data.expiryDate)
-      
-      // Update the material with the correct status
       const updatedMaterial = { ...data, status: actualStatus }
       setMaterial(updatedMaterial)
-      console.log("✅ Successfully loaded material data")
     } catch (err: any) {
       console.error("❌ Error fetching material:", err)
       setError(err.message || "An error occurred while fetching material details")
@@ -247,28 +207,46 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  // Memoize expensive calculations
+  const materialData = useMemo(() => {
+    if (!material) return null
+    
+    const supplierInfo = SUPPLIER_DETAILS[material.supplier as keyof typeof SUPPLIER_DETAILS] || {
+      location: "Location not available",
+      email: "contact@supplier.com",
+      country: "Unknown",
+    }
+
+    const description = MATERIAL_DESCRIPTIONS[material.item as keyof typeof MATERIAL_DESCRIPTIONS] ||
+      `High-quality ${material.category.toLowerCase()} material suitable for various construction and woodworking applications.`
+    
+    const specifications = MATERIAL_SPECIFICATIONS[material.item as keyof typeof MATERIAL_SPECIFICATIONS] || DEFAULT_SPECIFICATION
+    const suggestedOrder = calculateSuggestedOrder(material.quantity, material.minStock, material.maxStock)
+    const totalOrderValue = suggestedOrder * material.costPerUnit
+
+    return {
+      supplierInfo,
+      description,
+      specifications,
+      suggestedOrder,
+      totalOrderValue
+    }
+  }, [material])
+
   const handlePlaceOrder = async () => {
-    if (!material) return
+    if (!material || !materialData) return
 
     setIsPlacingOrder(true)
-
-    // Show loading toast
     const loadingToast = toast.loading("Placing your order...", {
       description: "Please wait while we process your order",
     })
 
     try {
-      // Simulate API call delay
       await new Promise((resolve) => setTimeout(resolve, 2000))
-
-      // Dismiss loading toast
       toast.dismiss(loadingToast)
 
-      const suggestedOrder = calculateSuggestedOrder(material.quantity, material.minStock, material.maxStock)
-
-      // Show success toast
       toast.success("Order Placed Successfully! 🎉", {
-        description: `Order for ${suggestedOrder} ${material.unit} of ${material.item} has been placed with ${material.supplier}.`,
+        description: `Order for ${materialData.suggestedOrder} ${material.unit} of ${material.item} has been placed with ${material.supplier}.`,
         duration: 4000,
         action: {
           label: "View Orders",
@@ -277,16 +255,11 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
       })
 
       setShowOrderDialog(false)
-
-      // Redirect to inventory page after a short delay
       setTimeout(() => {
         router.push("/inventory")
       }, 2000)
     } catch (error) {
-      // Dismiss loading toast
       toast.dismiss(loadingToast)
-
-      // Show error toast
       toast.error("Order Failed", {
         description: "There was an error placing your order. Please try again.",
         duration: 4000,
@@ -354,21 +327,9 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
     )
   }
 
-  if (!material) {
+  if (!material || !materialData) {
     return null
   }
-
-  // Get enhanced material data
-  const supplierInfo = supplierDetails[material.supplier] || {
-    location: "Location not available",
-    email: "contact@supplier.com",
-    country: "Unknown",
-  }
-
-  const description = getMaterialDescription(material.item, material.category)
-  const specifications = getMaterialSpecifications(material.item, material.category)
-  const suggestedOrder = calculateSuggestedOrder(material.quantity, material.minStock, material.maxStock)
-  const totalOrderValue = suggestedOrder * material.costPerUnit
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -413,7 +374,7 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Origin:</label>
-                    <p className="text-lg">{supplierInfo.country}</p>
+                    <p className="text-lg">{materialData.supplierInfo.country}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Warehouse:</label>
@@ -453,13 +414,13 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
 
                 <div>
                   <label className="text-sm font-medium text-gray-500">Description:</label>
-                  <p className="text-gray-700 mt-1">{description}</p>
+                  <p className="text-gray-700 mt-1">{materialData.description}</p>
                 </div>
 
                 <div>
                   <label className="text-sm font-medium text-gray-500">Specifications:</label>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                    {Object.entries(specifications).map(([key, value]) => (
+                    {Object.entries(materialData.specifications).map(([key, value]) => (
                       <div key={key} className="bg-gray-50 p-3 rounded-lg">
                         <p className="text-xs font-medium text-gray-500 uppercase">{key}</p>
                         <p className="text-sm font-semibold">{String(value)}</p>
@@ -486,14 +447,14 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
                     <MapPin className="h-4 w-4 mr-1" />
                     Location:
                   </label>
-                  <p className="text-lg">{supplierInfo.location}</p>
+                  <p className="text-lg">{materialData.supplierInfo.location}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500 flex items-center">
                     <Mail className="h-4 w-4 mr-1" />
                     Email:
                   </label>
-                  <p className="text-lg">{supplierInfo.email}</p>
+                  <p className="text-lg">{materialData.supplierInfo.email}</p>
                 </div>
               </div>
             </div>
@@ -504,13 +465,13 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-orange-900">
-                      Suggestion: Order {suggestedOrder} {material.unit}
+                      Suggestion: Order {materialData.suggestedOrder} {material.unit}
                     </h3>
                     <p className="text-sm text-orange-700 mt-1">
                       Current stock is below minimum threshold. Recommended reorder quantity based on usage patterns.
                     </p>
                     <p className="text-sm text-orange-600 mt-2 font-medium">
-                      Total Order Value: S${totalOrderValue.toLocaleString()}
+                      Total Order Value: S${materialData.totalOrderValue.toLocaleString()}
                     </p>
                   </div>
                   <button
@@ -546,7 +507,7 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
                 <div className="flex justify-between">
                   <span className="font-medium">Quantity:</span>
                   <span>
-                    {suggestedOrder} {material.unit}
+                    {materialData.suggestedOrder} {material.unit}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -560,7 +521,7 @@ export default function MaterialDetailPage({ params }: { params: Promise<{ id: s
                 <hr className="my-2" />
                 <div className="flex justify-between font-semibold text-lg">
                   <span>Total Value:</span>
-                  <span className="text-orange-600">S${totalOrderValue.toLocaleString()}</span>
+                  <span className="text-orange-600">S${materialData.totalOrderValue.toLocaleString()}</span>
                 </div>
               </div>
 
