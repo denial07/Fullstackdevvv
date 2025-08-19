@@ -10,7 +10,7 @@ import Inventory from "@/lib/models/Inventory";
 const first = (obj: Record<string, any>, keys: string[]) => {
     for (const k of keys) {
         const v = obj?.[k];
-        if (v !== undefined && v !== null && String(v) !== "") return v;
+        if (v !== undefined && v !== null && String(v).trim() !== "") return v;
     }
     return undefined;
 };
@@ -21,14 +21,51 @@ const toNum = (v: any) => {
     return Number.isFinite(n) ? n : undefined;
 };
 
-const toDateStr = (v?: any) => {
-    const today = new Date().toISOString().slice(0, 10);
-    if (!v) return today;
-    const d = new Date(v);
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+const toISODateString = (d: Date | null) => {
+    if (!d) return "";
     const y = d.getUTCFullYear();
-    if (Number.isNaN(d.getTime()) || y < 2000) return today;
-    return d.toISOString().slice(0, 10);
+    if (!Number.isFinite(y) || y < 2000) return "";
+    return `${y}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 };
+
+// Excel serial (days since 1899-12-30), supports fractional days
+const excelSerialToDate = (serial: number): Date | null => {
+    if (!Number.isFinite(serial)) return null;
+    const base = Date.UTC(1899, 11, 30);
+    const ms = Math.round(serial * 24 * 60 * 60 * 1000);
+    return new Date(base + ms);
+};
+
+const parseDateFlexible = (v: any): Date | null => {
+    if (!v && v !== 0) return null;
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    if (typeof v === "number") {
+        const fromExcel = excelSerialToDate(v);
+        if (fromExcel && !isNaN(fromExcel.getTime())) return fromExcel;
+        // If someone passed epoch ms accidentally
+        const asMs = new Date(v);
+        return isNaN(asMs.getTime()) ? null : asMs;
+    }
+    if (typeof v === "string") {
+        // Allow ISO strings
+        const d = new Date(v);
+        if (!isNaN(d.getTime())) return d;
+        // Try numeric strings as excel serials
+        const n = Number(v);
+        if (Number.isFinite(n)) {
+            const ex = excelSerialToDate(n);
+            if (ex && !isNaN(ex.getTime())) return ex;
+        }
+    }
+    return null;
+};
+
+const titleCase = (s?: string) =>
+    (s || "")
+        .toLowerCase()
+        .replace(/\b\w/g, (m) => m.toUpperCase());
 
 const slug = (s?: string) =>
     (s || "")
@@ -38,119 +75,95 @@ const slug = (s?: string) =>
         .replace(/[^A-Z0-9]+/g, "-")
         .replace(/(^-|-$)/g, "");
 
-/** True if status implies delivered */
 function isDelivered(status?: string) {
     return typeof status === "string" && /delivered/i.test(status);
 }
 
-/** Support items being an array, a single object, a JSON string, or absent */
-function normalizeItems(s: any): any[] {
-    const raw = s?.items ?? s?.item ?? [];
-    if (Array.isArray(raw)) return raw;
-    if (typeof raw === "string") {
-        try {
-            const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
-        } catch {
-            return [];
-        }
-    }
-    return raw && typeof raw === "object" ? [raw] : [];
+/** Build a stable Inventory.id from shipment attributes (no ObjectId). */
+function deriveInventoryIdFromShipment(s: any): string {
+    // Priority: itemid -> sku/code -> vendor|item -> trackingnumber -> shipmentid
+    const itemId = first(s, ["itemid", "itemId", "sku", "code", "productCode", "barcode", "ean", "upc"]);
+    const vendor = first(s, ["vendor", "supplier", "brand"]);
+    const itemName = first(s, ["itemdescription", "item", "productName", "description"]);
+    const tracking = first(s, ["trackingnumber", "trackingNumber"]);
+    const shipId = first(s, ["shipmentid", "shipmentId"]);
+
+    if (itemId && vendor) return `${slug(String(vendor))}|${slug(String(itemId))}`;
+    if (itemId) return slug(String(itemId));
+    if (vendor && itemName) return `${slug(String(vendor))}|${slug(String(itemName))}`;
+    if (tracking) return slug(String(tracking));
+    if (shipId) return slug(String(shipId));
+    // last resort: deterministic but readable
+    return `INV|${slug(String(itemName || "ITEM"))}`;
 }
 
-/** Choose a single human-readable name from an item or shipment */
-function chooseItemName(item: any, shipment: any, fallback: string) {
-    return (
-        item?.description ??
-        item?.name ??
-        item?.title ??
-        item?.sku ??
-        first(shipment, ["description", "desc", "productName"]) ??
-        fallback
-    );
-}
+/** Map a *single-item* shipment (your screenshot fields) → Inventory doc */
+function buildInventoryFromShipmentTop(s: any) {
+    const quantity =
+        toNum(first(s, ["itemquantity", "quantity", "qty", "units", "containers"])) ?? 1;
 
-/** Derive a stable Inventory ID based on *item attributes* (not shipment _id) */
-function deriveInventoryId(shipment: any, item: any, idx: number): string {
-    // Prefer hard identifiers:
-    const skuLike =
-        first(item, ["sku", "SKU", "code", "productCode", "barcode", "ean", "upc"]) ??
-        first(shipment, ["sku", "SKU", "code", "productCode", "barcode", "ean", "upc"]);
-    const vendor = first(item, ["vendor", "supplier", "brand"]) ?? first(shipment, ["vendor", "supplier"]);
-    const name = chooseItemName(item, shipment, `ITEM-${idx + 1}`);
+    const itemName =
+        first(s, ["itemdescription", "item", "productName", "description"]) ??
+        `Shipment ${s._id}`;
 
-    if (skuLike && vendor) return `${slug(vendor)}|${slug(String(skuLike))}`;
-    if (skuLike) return slug(String(skuLike));
-    if (vendor) return `${slug(vendor)}|${slug(String(name))}`;
-    // Fallback: name + index to avoid collisions
-    return `${slug(String(name))}|IDX-${idx + 1}`;
-}
-
-/** Build an Inventory doc for a single item line */
-function buildInventoryFromShipmentItem(
-    shipment: any,
-    item: any,
-    idForInventory: string,
-    derivedCpuFallback: number
-) {
-    const qty = toNum(item?.quantity) ?? toNum(item?.qty) ?? 0;
     const unit =
-        item?.unit ??
-        first(shipment, ["unit", "uom", "unitOfMeasure"]) ??
-        "ea";
+        first(s, ["itemunit", "unit", "uom", "unitOfMeasure"]) ?? "ea";
 
-    const itemName = chooseItemName(item, shipment, `Item ${idForInventory}`);
-    const supplier = first(item, ["vendor", "supplier", "brand"]) ?? first(shipment, ["vendor", "supplier"]) ?? "Unknown";
-    const location = first(shipment, ["warehouse", "location", "site"]) ?? "Main";
-    const category = first(item, ["category", "type"]) ?? first(shipment, ["category", "type"]) ?? "Uncategorized";
+    const supplier =
+        first(s, ["vendor", "supplier", "brand"]) ?? "Unknown";
 
-    // cost per unit: prefer item.unitPrice; else derived fallback from totals
-    const cpuExplicit = toNum(item?.unitPrice);
-    const costPerUnit = cpuExplicit ?? derivedCpuFallback ?? 0;
+    const location =
+        first(s, ["destination", "warehouse", "originwarehouse", "location", "site"]) ?? "Main";
 
+    const category = titleCase(first(s, ["type", "category"])) || "Incoming";
+
+    // Received date: prefer deliveredDate; else eta/estimateddelivery/shipdate
     const receivedDate =
-        toDateStr(first(shipment, ["deliveredAt", "deliveredDate", "arrivalDate", "receivedDate", "eta"])) ||
-        toDateStr(new Date());
-    const expiryDate = toDateStr(first(item, ["expiryDate", "exp", "bestBefore"])) || "";
+        toISODateString(
+            parseDateFlexible(
+                first(s, [
+                    "deliveredDate",
+                    "deliveredAt",
+                    "eta",
+                    "estimateddelivery",
+                    "shipdate",
+                    "receivedDate",
+                ])
+            )
+        ) || toISODateString(new Date());
+
+    // Expiry: only if provided, otherwise ""
+    const expiryDate =
+        toISODateString(parseDateFlexible(first(s, ["expiryDate", "bestBefore", "exp"]))) || "";
+
+    // costPerUnit: prefer itemunitprice; else derive from price/declaredvalue ÷ quantity
+    const explicitCPU = toNum(first(s, ["itemunitprice", "unitPrice"]));
+    const totalTop =
+        toNum(first(s, ["price", "totalvalue", "declaredvalue", "value", "amount", "cost"])) ?? 0;
+    const derivedCPU = quantity > 0 ? Number((totalTop / quantity).toFixed(2)) : 0;
+    const costPerUnit = explicitCPU ?? derivedCPU;
+
+    const id = deriveInventoryIdFromShipment(s);
+
+    // min/max defaults — tweak if you have business rules
+    const minStock = toNum(first(s, ["minStock", "min"])) ?? 0;
+    const maxStock = toNum(first(s, ["maxStock", "max"])) ?? quantity;
 
     return {
-        id: idForInventory,        // unique key by item attributes
-        item: itemName,            // human-friendly
+        id,                 // stable, from item/vendor/etc.
+        item: itemName,     // human friendly
         category,
-        quantity: qty || 0,
+        quantity,
         unit,
-        minStock: toNum(first(item, ["minStock", "min"])) ?? 0,
-        maxStock: toNum(first(item, ["maxStock", "max"])) ?? (qty || 0),
+        minStock,
+        maxStock,
         location,
-        receivedDate,
-        expiryDate,
+        receivedDate,       // "YYYY-MM-DD"
+        expiryDate,         // "" if not provided
         supplier,
         costPerUnit,
         status: "In Stock",
     };
-}
-
-/** Compute a per-item fallback CPU using top-level totals if item lacks unitPrice */
-function computeDerivedCpuFallbacks(shipment: any, items: any[]): number[] {
-    // Sum of item quantities (only numeric)
-    const qtys = items.map((it) => toNum(it?.quantity) ?? 0);
-    const totalQty = qtys.reduce((a, b) => a + (b || 0), 0);
-
-    // Prefer top-level monetary totals common in your dataset
-    const topLevelTotal =
-        toNum(
-            first(shipment, [
-                "price",         // common in your data
-                "totalvalue",
-                "declaredvalue",
-                "value",
-                "amount",
-                "cost",
-            ])
-        ) ?? 0;
-
-    const defaultCpu = totalQty > 0 ? Number((topLevelTotal / totalQty).toFixed(2)) : 0;
-    return items.map(() => defaultCpu);
 }
 
 /* ----------------------------- GET / PATCH / DELETE ----------------------------- */
@@ -193,7 +206,7 @@ export async function PATCH(
         let update: any;
 
         if (contentType.includes("application/json")) {
-            const raw = await req.text(); // read once
+            const raw = await req.text();
             if (!raw || !raw.trim()) {
                 return NextResponse.json({ error: "Empty request body" }, { status: 400 });
             }
@@ -212,7 +225,6 @@ export async function PATCH(
                 return NextResponse.json({ error: "Empty form body" }, { status: 400 });
             }
         } else {
-            // Fallback – try text->JSON, else 415
             const raw = await req.text();
             if (raw && raw.trim()) {
                 try {
@@ -244,34 +256,11 @@ export async function PATCH(
             return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
         }
 
-        // 5) If status changed to Delivered, upsert Inventory **by item attributes**
+        // 5) If status changed to Delivered, upsert ONE Inventory doc from top-level shipment fields
         const isNowDelivered = isDelivered(updated?.status);
         if (!wasDelivered && isNowDelivered) {
-            const items = normalizeItems(updated);
-            if (items.length === 0) {
-                // No items: still create one inventory doc based on shipment attributes
-                const fallbackKey =
-                    first(updated, ["sku", "code", "productCode"]) ??
-                    updated.trackingNumber ??
-                    `${updated._id}-NOITEM`;
-                const derivedCpuFallbacks = [0];
-                const inv = buildInventoryFromShipmentItem(
-                    updated,
-                    {},
-                    slug(String(fallbackKey)),
-                    derivedCpuFallbacks[0]
-                );
-                await Inventory.updateOne({ id: inv.id }, { $set: inv }, { upsert: true });
-            } else {
-                const cpuFallbacks = computeDerivedCpuFallbacks(updated, items);
-                // Upsert each item line into Inventory
-                for (let i = 0; i < items.length; i++) {
-                    const it = items[i];
-                    const invId = deriveInventoryId(updated, it, i); // <-- NOT the shipment ObjectId
-                    const invDoc = buildInventoryFromShipmentItem(updated, it, invId, cpuFallbacks[i]);
-                    await Inventory.updateOne({ id: invDoc.id }, { $set: invDoc }, { upsert: true });
-                }
-            }
+            const invDoc = buildInventoryFromShipmentTop(updated);
+            await Inventory.updateOne({ id: invDoc.id }, { $set: invDoc }, { upsert: true });
         }
 
         return NextResponse.json(updated, { status: 200 });
