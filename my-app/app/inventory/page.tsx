@@ -1660,24 +1660,171 @@ export default function InventoryPage() {
             <CardDescription>Warehouse capacity and utilization</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <div className="text-lg font-semibold text-blue-900">Warehouse A</div>
-                <div className="text-sm text-blue-700">Hardwood Storage</div>
-                <Progress value={75} className="mt-2 h-2" />
-                <div className="text-xs text-blue-600 mt-1">75% Capacity</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Singapore Warehouse */}
+              <div className="p-6 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="text-xl font-bold text-blue-900">Singapore Warehouse</div>
+                    <div className="text-sm text-blue-700">Primary Distribution Hub</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-blue-900">
+                      {(() => {
+                        const singaporeItems = inventory.filter(item => 
+                          item.location === 'Singapore Warehouse'
+                        )
+                        const totalQuantity = singaporeItems.reduce((sum, item) => sum + item.quantity, 0)
+                        const maxCapacity = singaporeItems.reduce((sum, item) => sum + item.maxStock, 0)
+                        const percentage = maxCapacity > 0 ? (totalQuantity / maxCapacity) * 100 : 0
+                        return `${Math.round(percentage)}%`
+                      })()}
+                    </div>
+                    <div className="text-xs text-blue-600">Capacity</div>
+                  </div>
+                </div>
+                
+                <Progress 
+                  value={(() => {
+                    const singaporeItems = inventory.filter(item => 
+                      item.location === 'Singapore Warehouse'
+                    )
+                    const totalQuantity = singaporeItems.reduce((sum, item) => sum + item.quantity, 0)
+                    const maxCapacity = singaporeItems.reduce((sum, item) => sum + item.maxStock, 0)
+                    return maxCapacity > 0 ? (totalQuantity / maxCapacity) * 100 : 0
+                  })()} 
+                  className="mt-3 h-3" 
+                />
+                
+                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-blue-700 font-medium">Current Stock</div>
+                    <div className="text-blue-900">
+                      {(() => {
+                        const singaporeItems = inventory.filter(item => 
+                          item.location === 'Singapore Warehouse'
+                        )
+                        return singaporeItems.reduce((sum, item) => sum + item.quantity, 0).toLocaleString()
+                      })()} m³
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-blue-700 font-medium">Max Capacity</div>
+                    <div className="text-blue-900">
+                      {(() => {
+                        const singaporeItems = inventory.filter(item => 
+                          item.location === 'Singapore Warehouse'
+                        )
+                        return singaporeItems.reduce((sum, item) => sum + item.maxStock, 0).toLocaleString()
+                      })()} m³
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-blue-700 font-medium">Items Stored</div>
+                    <div className="text-blue-900">
+                      {(() => {
+                        const singaporeItems = inventory.filter(item => 
+                          item.location === 'Singapore Warehouse'
+                        )
+                        return singaporeItems.length
+                      })()} items
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-blue-700 font-medium">Total Value</div>
+                    <div className="text-blue-900">
+                      S${(() => {
+                        const singaporeItems = inventory.filter(item => 
+                          item.location === 'Singapore Warehouse'
+                        )
+                        return singaporeItems.reduce((sum, item) => sum + (item.quantity * item.costPerUnit), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                      })()}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="p-4 bg-green-50 rounded-lg">
-                <div className="text-lg font-semibold text-green-900">Warehouse B</div>
-                <div className="text-sm text-green-700">Softwood & Engineered</div>
-                <Progress value={45} className="mt-2 h-2" />
-                <div className="text-xs text-green-600 mt-1">45% Capacity</div>
-              </div>
-              <div className="p-4 bg-purple-50 rounded-lg">
-                <div className="text-lg font-semibold text-purple-900">Warehouse C</div>
-                <div className="text-sm text-purple-700">Sustainable Materials</div>
-                <Progress value={60} className="mt-2 h-2" />
-                <div className="text-xs text-purple-600 mt-1">60% Capacity</div>
+
+              {/* Malaysian Warehouse */}
+              <div className="p-6 bg-green-50 rounded-lg border border-green-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="text-xl font-bold text-green-900">Malaysian Warehouse</div>
+                    <div className="text-sm text-green-700">Regional Distribution Center</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-green-900">
+                      {(() => {
+                        const malaysianItems = inventory.filter(item => 
+                          item.location === 'Malaysian Warehouse'
+                        )
+                        const totalQuantity = malaysianItems.reduce((sum, item) => sum + item.quantity, 0)
+                        const maxCapacity = malaysianItems.reduce((sum, item) => sum + item.maxStock, 0)
+                        const percentage = maxCapacity > 0 ? (totalQuantity / maxCapacity) * 100 : 0
+                        return `${Math.round(percentage)}%`
+                      })()}
+                    </div>
+                    <div className="text-xs text-green-600">Capacity</div>
+                  </div>
+                </div>
+                
+                <Progress 
+                  value={(() => {
+                    const malaysianItems = inventory.filter(item => 
+                      item.location === 'Malaysian Warehouse'
+                    )
+                    const totalQuantity = malaysianItems.reduce((sum, item) => sum + item.quantity, 0)
+                    const maxCapacity = malaysianItems.reduce((sum, item) => sum + item.maxStock, 0)
+                    return maxCapacity > 0 ? (totalQuantity / maxCapacity) * 100 : 0
+                  })()} 
+                  className="mt-3 h-3" 
+                />
+                
+                <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-green-700 font-medium">Current Stock</div>
+                    <div className="text-green-900">
+                      {(() => {
+                        const malaysianItems = inventory.filter(item => 
+                          item.location === 'Malaysian Warehouse'
+                        )
+                        return malaysianItems.reduce((sum, item) => sum + item.quantity, 0).toLocaleString()
+                      })()} m³
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-green-700 font-medium">Max Capacity</div>
+                    <div className="text-green-900">
+                      {(() => {
+                        const malaysianItems = inventory.filter(item => 
+                          item.location === 'Malaysian Warehouse'
+                        )
+                        return malaysianItems.reduce((sum, item) => sum + item.maxStock, 0).toLocaleString()
+                      })()} m³
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-green-700 font-medium">Items Stored</div>
+                    <div className="text-green-900">
+                      {(() => {
+                        const malaysianItems = inventory.filter(item => 
+                          item.location === 'Malaysian Warehouse'
+                        )
+                        return malaysianItems.length
+                      })()} items
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-green-700 font-medium">Total Value</div>
+                    <div className="text-green-900">
+                      S${(() => {
+                        const malaysianItems = inventory.filter(item => 
+                          item.location === 'Malaysian Warehouse'
+                        )
+                        return malaysianItems.reduce((sum, item) => sum + (item.quantity * item.costPerUnit), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })
+                      })()}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
