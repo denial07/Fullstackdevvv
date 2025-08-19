@@ -81,54 +81,50 @@ export async function GET(req: Request) {
     };
 
     // ---- Inventory summary (low stock / expiring / expired / value)
-    const [invCounts = {
-        totalItems: 0, lowStock: 0, expiringSoon: 0, expired: 0, totalValue: 0
-    }] = await inventory.aggregate([
-        {
-            $addFields: {
-                expiryAt: {
-                    $cond: [
-                        { $eq: [{ $type: '$expiryDate' }, 'date'] },
-                        '$expiryDate',
-                        { $dateFromString: { dateString: '$expiryDate', onError: null, onNull: null } }
-                    ]
-                },
-                totalValueCalc: {
-                    $ifNull: ['$totalValue', { $multiply: [{ $ifNull: ['$unitCost', 0] }, { $ifNull: ['$quantity', 0] }] }]
-                }
-            }
-        },
-        {
-            $project: {
-                quantity: 1,
-                reorderPoint: 1,
-                totalValueCalc: 1,
-                expSoon: { $and: [{ $ne: ['$expiryAt', null] }, { $gte: ['$expiryAt', now] }, { $lte: ['$expiryAt', soon] }] },
-                expired: { $and: [{ $ne: ['$expiryAt', null] }, { $lt: ['$expiryAt', now] }] },
-                low: { $lt: ['$quantity', '$reorderPoint'] }
-            }
-        },
-        {
-            $group: {
-                _id: null,
-                totalItems: { $sum: 1 },
-                lowStock: { $sum: { $cond: ['$low', 1, 0] } },
-                expiringSoon: { $sum: { $cond: ['$expSoon', 1, 0] } },
-                expired: { $sum: { $cond: ['$expired', 1, 0] } },
-                totalValue: { $sum: '$totalValueCalc' }
-            }
-        }
-    ]).toArray();
+    const inventoryItems = await inventory.find({}).toArray();
+    
+    // Calculate inventory metrics using the same logic as inventory page
+    const getDaysUntilExpiry = (expiryDate: string) => {
+        const today = new Date()
+        const expiry = new Date(expiryDate)
+        const diffTime = expiry.getTime() - today.getTime()
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        return diffDays
+    }
 
-    const inventorySummary = invCounts;
+    let lowStock = 0, expiringSoon = 0, expired = 0, totalValue = 0;
+
+    for (const item of inventoryItems) {
+        // Calculate stock percentage and days to expiry
+        const stockPercentage = (item.quantity / item.maxStock) * 100
+        const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+        
+        // Count items by status (same logic as inventory page)
+        if (daysToExpiry < 0) {
+            expired++
+        } else if (daysToExpiry < 30 && daysToExpiry >= 0) {
+            expiringSoon++
+        } else if (stockPercentage < 20) {
+            lowStock++
+        }
+        
+        // Calculate total value
+        totalValue += (item.quantity * item.costPerUnit)
+    }
+
+    const inventorySummary = {
+        totalItems: inventoryItems.length,
+        lowStock,
+        expiringSoon, 
+        expired,
+        totalValue
+    };
 
     // ---- Inventory value distribution (by category)
     const inventoryValueDist = await inventory.aggregate([
         {
             $addFields: {
-                value: {
-                    $ifNull: ['$totalValue', { $multiply: [{ $ifNull: ['$unitCost', 0] }, { $ifNull: ['$quantity', 0] }] }]
-                }
+                value: { $multiply: [{ $ifNull: ['$quantity', 0] }, { $ifNull: ['$costPerUnit', 0] }] }
             }
         },
         { $group: { _id: '$category', value: { $sum: '$value' } } },
@@ -210,33 +206,50 @@ export async function GET(req: Request) {
                         { $dateFromString: { dateString: '$expiryDate', onError: null, onNull: null } }
                     ]
                 },
-                low: { $lt: ['$quantity', '$reorderPoint'] }
+                stockPercentage: { 
+                    $cond: [
+                        { $gt: ['$maxStock', 0] },
+                        { $multiply: [{ $divide: ['$quantity', '$maxStock'] }, 100] },
+                        0
+                    ]
+                }
+            }
+        },
+        {
+            $addFields: {
+                daysToExpiry: {
+                    $cond: [
+                        { $ne: ['$expiryAt', null] },
+                        { $divide: [{ $subtract: ['$expiryAt', now] }, 86400000] }, // Convert to days
+                        999999 // Large number for items without expiry
+                    ]
+                }
             }
         },
         {
             $match: {
                 $or: [
-                    { expiryAt: { $lte: soon } },
-                    { low: true }
+                    { daysToExpiry: { $lt: 30 } }, // Expiring within 30 days or expired
+                    { stockPercentage: { $lt: 20 } } // Low stock (< 20%)
                 ]
             }
         },
         {
             $project: {
                 _id: 0,
-                id: { $ifNull: ['$itemId', ''] },
+                id: { $ifNull: ['$id', ''] },
                 item: '$item',
                 quantity: 1,
                 unit: '$unit',
-                expiryDate: '$expiryAt',
+                expiryDate: '$expiryDate',
                 status: {
                     $cond: [
-                        { $lt: ['$expiryAt', now] }, 'Expired',
+                        { $lt: ['$daysToExpiry', 0] }, 'Expired',
                         {
                             $cond: [
-                                { $and: [{ $ne: ['$expiryAt', null] }, { $lte: ['$expiryAt', soon] }] },
+                                { $and: [{ $gte: ['$daysToExpiry', 0] }, { $lt: ['$daysToExpiry', 30] }] },
                                 'Expiring Soon',
-                                { $cond: [{ $lt: ['$quantity', '$reorderPoint'] }, 'Low Stock', 'Normal'] }
+                                { $cond: [{ $lt: ['$stockPercentage', 20] }, 'Low Stock', 'Normal'] }
                             ]
                         }
                     ]

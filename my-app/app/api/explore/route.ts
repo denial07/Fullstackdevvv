@@ -27,6 +27,52 @@ export async function POST(req: Request) {
     const database = await db();
     const col = database.collection(MAP[body.dataset]);
 
+    // Special handling for inventory status - calculate dynamically
+    if (body.dataset === 'inventory' && body.groupBy === 'status') {
+        const items = await col.find({}).toArray();
+        
+        // Calculate status for each item using same logic as inventory page
+        const statusCounts: Record<string, number> = {
+            'Good': 0,
+            'Low Stock': 0,
+            'Expiring Soon': 0,
+            'Expired': 0
+        };
+
+        const getDaysUntilExpiry = (expiryDate: string) => {
+            const today = new Date()
+            const expiry = new Date(expiryDate)
+            const diffTime = expiry.getTime() - today.getTime()
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+            return diffDays
+        }
+
+        for (const item of items) {
+            const stockPercentage = (item.quantity / item.maxStock) * 100
+            const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
+            
+            // Priority order: Expired > Expiring Soon > Low Stock > Good
+            if (daysToExpiry < 0) {
+                statusCounts['Expired']++
+            } else if (daysToExpiry < 30 && daysToExpiry >= 0) {
+                statusCounts['Expiring Soon']++
+            } else if (stockPercentage < 20) {
+                statusCounts['Low Stock']++
+            } else {
+                statusCounts['Good']++
+            }
+        }
+
+        // Convert to the expected format
+        const rows = Object.entries(statusCounts)
+            .map(([key, value]) => ({ key, value }))
+            .filter(row => row.value > 0) // Only show statuses that have items
+            .sort((a, b) => b.value - a.value);
+
+        return NextResponse.json({ rows });
+    }
+
+    // Standard aggregation for other cases
     const acc =
         body.agg.op === 'count' ? { $sum: 1 } :
             body.agg.op === 'sum' ? { $sum: { $toDouble: { $ifNull: [`$${body.agg.field}`, 0] } } } :
