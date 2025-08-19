@@ -1,20 +1,26 @@
 'use client'
 
-// app/(dashboard)/page.tsx — Revamped client dashboard with fixed Hooks order
-// All hooks (useMemo) are now declared before any early returns to satisfy React Rules of Hooks.
-// Data still comes only from /api/dashboard and /api/explore (no client DB).
-
-import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
-import { Navbar } from '@/components/navbar'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Ship, Package, AlertTriangle, Clock, TrendingDown, MessageCircle, Loader2, CheckCircle2, Info } from 'lucide-react'
-import { ChatBot } from '@/components/chatbot'
-
+import { useEffect, useState } from "react"
+import { Loader2 } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Progress } from "@/components/ui/progress"
+import {
+  AlertTriangle,
+  Package,
+  Ship,
+  TrendingDown,
+  Clock,
+  DollarSign,
+  ShoppingCart,
+  TrendingUp,
+  MessageCircle,
+} from "lucide-react"
+import Link from "next/link"
+import { Navbar } from "@/components/navbar"
+import { ChatBot } from "@/components/chatbot"
 import {
   LineChart,
   Line,
@@ -29,93 +35,258 @@ import {
   PieChart,
   Pie,
   Cell,
-} from 'recharts'
+  AreaChart,
+  Area,
+} from "recharts"
 
-// ---------------- Types (matches /api/dashboard response) ----------------
-type ShipmentSummary = { total: number; inTransit: number; delayed: number; arrived: number; totalValue: number }
-type InventorySummary = { totalItems: number; lowStock: number; expiringSoon: number; expired: number; totalValue: number }
+import { getShipmentSummary, getInventorySummary, getOrdersSummary } from "@/lib/summaries";
+import type { ShipmentSummary, InventorySummary, OrdersSummary } from "@/lib/summaries";
 
-type ShipmentTrendPoint = { week: string; incoming: number; outgoing: number; delayed: number }
-type InventoryValueSlice = { name: string; value: number }
-type DailyOpsPoint = { day: string; shipments: number; inventory: number }
-type RecentShipment = { id: string; vendor: string; status: 'In Transit' | 'Delayed' | 'Arrived'; expectedArrival: string; value: number; delay: number }
-type CriticalInventory = { id: string; item: string; quantity: number; unit: string; expiryDate: string; status: 'Low Stock' | 'Expiring Soon' | 'Expired' }
 
-type DashboardData = {
-  shipmentSummary: ShipmentSummary
-  inventorySummary: InventorySummary
-  shipmentTrends: ShipmentTrendPoint[]
-  inventoryValueDist: InventoryValueSlice[]
-  dailyOps: DailyOpsPoint[]
-  recentShipments: RecentShipment[]
-  criticalInventory: CriticalInventory[]
+
+
+// Professional color palette
+const colors = {
+  primary: "#1e40af", // Blue-700
+  primaryLight: "#3b82f6", // Blue-500
+  secondary: "#059669", // Emerald-600
+  secondaryLight: "#10b981", // Emerald-500
+  accent: "#dc2626", // Red-600
+  accentLight: "#ef4444", // Red-500
+  warning: "#d97706", // Amber-600
+  warningLight: "#f59e0b", // Amber-500
+  neutral: "#6b7280", // Gray-500
+  neutralLight: "#9ca3af", // Gray-400
+  background: "#f8fafc", // Slate-50
+  surface: "#ffffff", // White
+  good: "#16a34a", // Green-600
+  okay: "#f59e0b", // Amber-500
 }
 
-const COLORS = ["#1e40af", "#059669", "#d97706", "#dc2626", "#64748b"]
+
+
+
+// Mock data for demonstration
+// const shipmentSummary = {
+//   total: 24,
+//   inTransit: 8,
+//   delayed: 3,
+//   arrived: 13,
+//   totalValue: 245000,
+// }
+
+// const inventorySummary = {
+//   totalItems: 156,
+//   lowStock: 12,
+//   expiringSoon: 8,
+//   expired: 2,
+//   totalValue: 89000,
+// }
+
+// const ordersSummary = {
+//   total: 42,
+//   pending: 8,
+//   paid: 28,
+//   shipped: 24,
+//   delivered: 18,
+//   totalValue: 156000,
+// }
+
+
+
+
+// Chart data with professional colors
+const revenueData = [
+  { month: "Jan", revenue: 125000, expenditure: 85000, profit: 40000 },
+  { month: "Feb", revenue: 142000, expenditure: 92000, profit: 50000 },
+  { month: "Mar", revenue: 138000, expenditure: 88000, profit: 50000 },
+  { month: "Apr", revenue: 156000, expenditure: 95000, profit: 61000 },
+  { month: "May", revenue: 168000, expenditure: 102000, profit: 66000 },
+  { month: "Jun", revenue: 175000, expenditure: 108000, profit: 67000 },
+]
+
+const shipmentTrendData = [
+  { week: "Week 1", incoming: 12, outgoing: 8, delayed: 2 },
+  { week: "Week 2", incoming: 15, outgoing: 11, delayed: 1 },
+  { week: "Week 3", incoming: 18, outgoing: 14, delayed: 3 },
+  { week: "Week 4", incoming: 22, outgoing: 18, delayed: 2 },
+]
+
+const inventoryValueData = [
+  { category: "Teak Wood", value: 35000, percentage: 39 },
+  { category: "Pine Wood", value: 22000, percentage: 25 },
+  { category: "Oak Wood", value: 18000, percentage: 20 },
+  { category: "Hardware", value: 8000, percentage: 9 },
+  { category: "Other", value: 6000, percentage: 7 },
+]
+
+const orderStatusData = [
+  { status: "Delivered", count: 18, color: colors.secondary },
+  { status: "Shipped", count: 6, color: colors.primary },
+  { status: "Processing", count: 10, color: colors.warning },
+  { status: "Pending Payment", count: 8, color: colors.accent },
+]
+
+const dailyOperationsData = [
+  { day: "Mon", shipments: 5, inventory: 12 },
+  { day: "Tue",  shipments: 7, inventory: 8 },
+  { day: "Wed", shipments: 9, inventory: 15 },
+  { day: "Thu",shipments: 6, inventory: 10 },
+  { day: "Fri", shipments: 12, inventory: 20 },
+  { day: "Sat", shipments: 3, inventory: 5 },
+  { day: "Sun", shipments: 2, inventory: 3 },
+]
+
+const recentShipments = [
+  {
+    id: "SH-001",
+    vendor: "Malaysian Timber Co.",
+    status: "In Transit",
+    expectedArrival: "2024-01-15",
+    value: 15000,
+    delay: 0,
+  },
+  {
+    id: "SH-002",
+    vendor: "Indonesian Wood Supply",
+    status: "Delayed",
+    expectedArrival: "2024-01-12",
+    value: 22000,
+    delay: 3,
+  },
+  {
+    id: "SH-003",
+    vendor: "Thai Forest Products",
+    status: "Arrived",
+    expectedArrival: "2024-01-08",
+    value: 18500,
+    delay: 0,
+  },
+]
+
+const criticalInventory = [
+  {
+    id: "INV-001",
+    item: "Teak Wood Planks",
+    quantity: 45,
+    unit: "m³",
+    expiryDate: "2024-02-15",
+    status: "Low Stock",
+  },
+  {
+    id: "INV-002",
+    item: "Pine Wood Boards",
+    quantity: 12,
+    unit: "m³",
+    expiryDate: "2024-01-20",
+    status: "Expiring Soon",
+  },
+  {
+    id: "INV-003",
+    item: "Oak Wood Sheets",
+    quantity: 8,
+    unit: "m³",
+    expiryDate: "2024-01-10",
+    status: "Expired",
+  },
+]
+
+const recentOrders = [
+  {
+    id: "ORD-001",
+    customer: "ABC Logistics Pte Ltd",
+    items: "Standard Pallets x 500",
+    value: 12500,
+    paymentStatus: "Paid",
+    shippingStatus: "Shipped",
+    orderDate: "2024-01-10",
+  },
+  {
+    id: "ORD-002",
+    customer: "Singapore Shipping Co.",
+    items: "Heavy Duty Pallets x 200",
+    value: 8900,
+    paymentStatus: "Pending",
+    shippingStatus: "Processing",
+    orderDate: "2024-01-12",
+  },
+  {
+    id: "ORD-003",
+    customer: "Maritime Solutions Ltd",
+    items: "Custom Pallets x 150",
+    value: 6750,
+    paymentStatus: "Paid",
+    shippingStatus: "Delivered",
+    orderDate: "2024-01-08",
+  },
+]
+
+type DashboardProps = {
+  shipmentSummary: {
+    total: number
+    inTransit: number
+    delayed: number
+    arrived: number
+    totalValue: number
+  }
+  inventorySummary: {
+    totalItems: number
+    lowStock: number
+    expiringSoon: number
+    expired: number
+    totalValue: number
+  }
+  ordersSummary: {
+    total: number
+    pending: number
+    paid: number
+    shipped: number
+    delivered: number
+    totalValue: number
+  }
+}
+
+
+
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null)
+  const [data, setData] = useState<DashboardProps | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
 
-  // Client-friendly controls (like other SaaS dashboards)
-  const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d')
+
+  
+
+
+
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true)
-        const res = await fetch(`/api/dashboard?period=${period}`, { cache: 'no-store' })
-        if (!res.ok) throw new Error('Failed to fetch /api/dashboard')
-        const json = (await res.json()) as DashboardData
-        setData(json)
-      } catch (e: any) {
-        setError(e?.message || 'Something went wrong')
-      } finally {
-        setLoading(false)
+    fetchSummary()
+    
+  }, [])
+
+  const fetchSummary = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch("/api/summary")
+      if (!response.ok) {
+        throw new Error("Failed to fetch dashboard summary")
       }
+      const summary = await response.json()
+      setData(summary)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong")
+    } finally {
+      setLoading(false)
     }
-    load()
-  }, [period])
+  }
 
-  // ---------- Derived insights (computed on safe fallbacks to obey Rules of Hooks) ----------
-  const recentShipmentsArr = data?.recentShipments ?? []
-  const criticalInventoryArr = data?.criticalInventory ?? []
-
-  const { recentOnTimeRate, avgDelayDays } = useMemo(() => {
-    const arrived = recentShipmentsArr.filter(s => s.status === 'Arrived')
-    const onTime = arrived.filter(s => (s.delay || 0) <= 0).length
-    const rate = arrived.length ? Math.round((onTime / arrived.length) * 100) : 0
-    const delays = recentShipmentsArr.map(s => Math.max(0, s.delay || 0))
-    const avg = delays.length ? (delays.reduce((a, b) => a + b, 0) / delays.length) : 0
-    return { recentOnTimeRate: rate, avgDelayDays: Number(avg.toFixed(1)) }
-  }, [recentShipmentsArr])
-
-  const vendorRows = useMemo(() => {
-    const map = new Map<string, { vendor: string; total: number; delayed: number; lastValue: number }>()
-    for (const s of recentShipmentsArr) {
-      const row = map.get(s.vendor) || { vendor: s.vendor || 'Unknown', total: 0, delayed: 0, lastValue: 0 }
-      row.total += 1
-      row.delayed += (s.status === 'Delayed' || (s.delay || 0) > 0) ? 1 : 0
-      row.lastValue = s.value || row.lastValue
-      map.set(s.vendor, row)
-    }
-    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 5)
-  }, [recentShipmentsArr])
-
-  const alerts = useMemo(() => {
-    const delayedShipments = recentShipmentsArr.filter(s => s.status === 'Delayed' || (s.delay || 0) > 0)
-    const expiring = criticalInventoryArr.filter(i => i.status === 'Expiring Soon' || i.status === 'Expired')
-    return { delayedShipments, expiring }
-  }, [recentShipmentsArr, criticalInventoryArr])
-
-  // ---------- Early returns after all hooks are declared ----------
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="animate-spin h-6 w-6 mr-2" />
-        <span>Loading dashboard…</span>
+        <span>Loading dashboard summary...</span>
       </div>
     )
   }
@@ -130,399 +301,486 @@ export default function DashboardPage() {
 
   if (!data) return null
 
-  const { shipmentSummary, inventorySummary, shipmentTrends, inventoryValueDist, dailyOps, recentShipments, criticalInventory } = data
+  const { shipmentSummary, inventorySummary, ordersSummary } = data
 
-  return (
+  return  (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Top controls */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <div className="space-y-0.5">
-            <h1 className="text-xl font-semibold text-slate-900">Operations Dashboard</h1>
-            <p className="text-sm text-slate-600">Real-time view of shipments and inventory health</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-slate-600">Period</label>
-            <select className="border rounded px-2 py-1" value={period} onChange={(e) => setPeriod(e.target.value as any)}>
-              <option value="7d">Last 7 days</option>
-              <option value="30d">Last 30 days</option>
-              <option value="90d">Last 90 days</option>
-            </select>
-          </div>
-        </div>
+        {/* Key Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
 
-        {/* KPI Tiles */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-          <KpiTile label="On‑time (recent)" value={`${recentOnTimeRate}%`} icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />} hint={`${recentShipments.length} recent shipments`} />
-          <KpiTile label="Avg Delay (days)" value={avgDelayDays.toString()} icon={<Clock className="h-4 w-4 text-amber-600" />} />
-          <KpiTile label="Active Shipments" value={shipmentSummary.inTransit.toString()} icon={<Ship className="h-4 w-4 text-blue-700" />} hint={`${shipmentSummary.delayed} delayed`} />
-          <KpiTile label="Low Stock" value={inventorySummary.lowStock.toString()} icon={<TrendingDown className="h-4 w-4 text-gray-600" />} />
-          <KpiTile label="Expiring Soon" value={inventorySummary.expiringSoon.toString()} icon={<AlertTriangle className="h-4 w-4 text-red-600" />} />
-          <KpiTile label="Inventory Value" value={`S$${(inventorySummary.totalValue || 0).toLocaleString()}`} icon={<Package className="h-4 w-4 text-emerald-600" />} />
-        </div>
+            {/* Card 1 - Shipments */}
+            <Link href="/shipments">
+              <Card className="border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-900">Active Shipments</CardTitle>
+                  <Ship className="h-4 w-4" style={{ color: colors.primary }} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">{shipmentSummary.inTransit}</div>
+                  <p className="text-xs text-slate-500">{shipmentSummary.delayed} delayed • {shipmentSummary.total} total</p>
+                </CardContent>
+              </Card>
+            </Link>
 
-        {/* Sections */}
-        <Tabs defaultValue="analytics" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-slate-100">
-            <TabsTrigger value="analytics" className="data-[state=active]:bg-white data-[state=active]:text-black">Analytics</TabsTrigger>
-            <TabsTrigger value="alerts" className="data-[state=active]:bg-white data-[state=active]:text-black">Alerts</TabsTrigger>
-            <TabsTrigger value="vendors" className="data-[state=active]:bg-white data-[state=active]:text-black">Vendors</TabsTrigger>
-            <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:text-black">Overview</TabsTrigger>
+            {/* Card 2 - Inventory */}
+            <Link href="/inventory">
+              <Card className="border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-900">Inventory Items</CardTitle>
+                  <Package className="h-4 w-4" style={{ color: colors.secondary }} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">{inventorySummary.totalItems}</div>
+                  <p className="text-xs text-slate-500">
+                    {inventorySummary.lowStock} low stock • {inventorySummary.expiringSoon} expiring • {inventorySummary.expired} expired
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* Card 3 - Orders */}
+            <Link href="/orders">
+              <Card className="border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-900">Orders</CardTitle>
+                  <ShoppingCart className="h-4 w-4" style={{ color: colors.warning }} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">{ordersSummary.total}</div>
+                  <p className="text-xs text-slate-500">
+                    {ordersSummary.pending} pending • {ordersSummary.delivered} delivered
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+
+          </div>
+
+        {/* Main Content Tabs */}
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3 bg-slate-100">
+            <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:text-black">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="data-[state=active]:bg-white data-[state=active]:text-black">
+              Analytics
+            </TabsTrigger>
+            <TabsTrigger value="operations" className="data-[state=active]:bg-white data-[state=active]:text-black">
+              Operations
+            </TabsTrigger>
+
           </TabsList>
 
-          {/* ANALYTICS */}
-          <TabsContent value="analytics" className="space-y-6">
-            {/* Explore panel (drag & drop) */}
-            <ExplorePanel />
-
-            {/* Key analytics */}
-            <AnalyticsCharts shipmentTrends={shipmentTrends} inventoryValueDist={inventoryValueDist} dailyOps={dailyOps} />
-          </TabsContent>
-
-          {/* ALERTS */}
-          <TabsContent value="alerts" className="space-y-6">
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-slate-900">Exceptions</CardTitle>
-                <CardDescription className="text-slate-600">Items needing attention now</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <div className="flex items-center gap-2 mb-2"><AlertTriangle className="h-4 w-4 text-red-600" /><span className="text-sm font-medium">Delayed Shipments</span></div>
-                  <div className="space-y-3">
-                    {alerts.delayedShipments.length === 0 && <p className="text-sm text-slate-500">No delays detected in recent shipments.</p>}
-                    {alerts.delayedShipments.map((s) => (
-                      <div key={s.id} className="flex items-center justify-between p-3 border rounded bg-white">
-                        <div className="text-sm"><span className="font-medium">{s.id}</span> • {s.vendor}</div>
-                        <div className="text-sm text-red-600">{Math.max(0, s.delay)} days delayed</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-2 mb-2"><Clock className="h-4 w-4 text-amber-600" /><span className="text-sm font-medium">Expiring / Expired Inventory</span></div>
-                  <div className="space-y-3">
-                    {alerts.expiring.length === 0 && <p className="text-sm text-slate-500">No expiring items in the current window.</p>}
-                    {alerts.expiring.map((i) => (
-                      <div key={i.id} className="flex items-center justify-between p-3 border rounded bg-white">
-                        <div className="text-sm"><span className="font-medium">{i.item}</span> • {i.quantity} {i.unit}</div>
-                        <div className="text-xs"><Badge className={badgeClassForInventory(i.status)}>{i.status}</Badge></div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2 text-slate-500 text-xs">
-                  <Info className="h-4 w-4" />
-                  <p>Tip: Use the Analytics tab to see trends and the Vendors tab to pinpoint chronic delays.</p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* VENDORS */}
-          <TabsContent value="vendors" className="space-y-6">
-            <Card className="border-slate-200 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-slate-900">Vendor Performance (recent)</CardTitle>
-                <CardDescription className="text-slate-600">Top vendors by shipments and delays</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="text-left text-slate-500">
-                      <tr>
-                        <th className="py-2">Vendor</th>
-                        <th className="py-2">Shipments</th>
-                        <th className="py-2">Delayed</th>
-                        <th className="py-2">On‑time %</th>
-                        <th className="py-2">Last Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vendorRows.map(v => {
-                        const onTime = v.total ? Math.round(((v.total - v.delayed) / v.total) * 100) : 0
-                        return (
-                          <tr key={v.vendor} className="border-t">
-                            <td className="py-2">{v.vendor || 'Unknown'}</td>
-                            <td className="py-2">{v.total}</td>
-                            <td className="py-2">{v.delayed}</td>
-                            <td className="py-2">{onTime}%</td>
-                            <td className="py-2">S${(v.lastValue || 0).toLocaleString()}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* OVERVIEW */}
           <TabsContent value="overview" className="space-y-6">
+
+            {/* Operational Analytics */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Shipment Status */}
               <Card className="border-slate-200 shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-slate-900">Shipment Status</CardTitle>
                   <CardDescription className="text-slate-600">Current status of all shipments</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <BarRow label="In Transit" value={shipmentSummary.inTransit} total={shipmentSummary.total} />
-                  <BarRow label="Delayed" value={shipmentSummary.delayed} total={shipmentSummary.total} />
-                  <BarRow label="Arrived" value={shipmentSummary.arrived} total={shipmentSummary.total} />
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-700">In Transit</span>
+                      <span className="text-sm font-medium text-gray-900">{shipmentSummary.inTransit}</span>
+                    </div>
+                    <Progress
+                      value={(shipmentSummary.inTransit / shipmentSummary.total) * 100}
+                      className="h-2"
+                      style={{ backgroundColor: colors.neutralLight }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-700">Delayed</span>
+                      <span className="text-sm font-medium text-gray-900">{shipmentSummary.delayed}</span>
+                    </div>
+                    <Progress
+                      value={(shipmentSummary.delayed / shipmentSummary.total) * 100}
+                      className="h-2"
+                      style={{ backgroundColor: colors.neutralLight }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-700">Arrived</span>
+                      <span className="text-sm font-medium text-gray-900">{shipmentSummary.arrived}</span>
+                    </div>
+                    <Progress
+                      value={(shipmentSummary.arrived / shipmentSummary.total) * 100}
+                      className="h-2"
+                      style={{ backgroundColor: colors.neutralLight }}
+                    />
+                  </div>
                 </CardContent>
               </Card>
 
-              {/* Inventory Health */}
               <Card className="border-slate-200 shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-slate-900">Inventory Health</CardTitle>
                   <CardDescription className="text-slate-600">Stock levels and expiry status</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <BarRow label="Normal Stock" value={inventorySummary.totalItems - inventorySummary.lowStock} total={inventorySummary.totalItems} />
-                  <BarRow label="Low Stock" value={inventorySummary.lowStock} total={inventorySummary.totalItems} />
-                  <BarRow label="Expiring Soon" value={inventorySummary.expiringSoon} total={inventorySummary.totalItems} />
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-700">Normal Stock</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {inventorySummary.totalItems - inventorySummary.lowStock}
+                      </span>
+                    </div>
+                    <Progress
+                      value={
+                        ((inventorySummary.totalItems - inventorySummary.lowStock) / inventorySummary.totalItems) * 100
+                      }
+                      className="h-2"
+                      style={{ backgroundColor: colors.neutralLight }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-700">Low Stock</span>
+                      <span className="text-sm font-medium text-gray-900">{inventorySummary.lowStock}</span>
+                    </div>
+                    <Progress
+                      value={(inventorySummary.lowStock / inventorySummary.totalItems) * 100}
+                      className="h-2"
+                      style={{ backgroundColor: colors.neutralLight }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-700">Expiring Soon</span>
+                      <span className="text-sm font-medium text-gray-900">{inventorySummary.expiringSoon}</span>
+                    </div>
+                    <Progress
+                      value={(inventorySummary.expiringSoon / inventorySummary.totalItems) * 100}
+                      className="h-2"
+                      style={{ backgroundColor: colors.neutralLight }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+            </div>
+          </TabsContent>
+
+          <TabsContent value="analytics" className="space-y-6">
+            {/* Detailed Analytics */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-slate-900">Inventory Value Distribution</CardTitle>
+                  <CardDescription className="text-slate-600">Current inventory value by wood type</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={inventoryValueData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percentage }) => `${name} ${percentage}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {inventoryValueData.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={
+                              [colors.primary, colors.secondary, colors.warning, colors.accent, colors.neutral][index]
+                            }
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value) => [`S$${value.toLocaleString()}`, "Value"]}
+                        contentStyle={{ backgroundColor: colors.surface, border: `1px solid ${colors.neutralLight}` }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-slate-900">Order Status Distribution</CardTitle>
+                  <CardDescription className="text-slate-600">Current order status breakdown</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={orderStatusData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ status, count }) => `${status}: ${count}`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="count"
+                      >
+                        {orderStatusData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ backgroundColor: colors.surface, border: `1px solid ${colors.neutralLight}` }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Financial Analytics */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-slate-900">Revenue vs Expenditure</CardTitle>
+                  <CardDescription className="text-slate-600">
+                    Monthly financial performance over the last 6 months
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={revenueData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={colors.neutralLight} />
+                      <XAxis dataKey="month" stroke={colors.neutral} />
+                      <YAxis tickFormatter={(value) => `S$${(value / 1000).toFixed(0)}k`} stroke={colors.neutral} />
+                      <Tooltip
+                        formatter={(value) => [`S$${value.toLocaleString()}`, ""]}
+                        contentStyle={{ backgroundColor: colors.surface, border: `1px solid ${colors.neutralLight}` }}
+                      />
+                      <Legend />
+                      <Area
+                        type="monotone"
+                        dataKey="revenue"
+                        stackId="1"
+                        stroke={colors.secondary}
+                        fill={colors.secondary}
+                        fillOpacity={0.6}
+                        name="Revenue"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="expenditure"
+                        stackId="2"
+                        stroke={colors.accent}
+                        fill={colors.accent}
+                        fillOpacity={0.6}
+                        name="Expenditure"
+                      />
+                      <Line type="monotone" dataKey="profit" stroke={colors.primary} strokeWidth={3} name="Profit" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-slate-900">Shipment Trends</CardTitle>
+                  <CardDescription className="text-slate-600">Weekly shipment activity and delays</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={shipmentTrendData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={colors.neutralLight} />
+                      <XAxis dataKey="week" stroke={colors.neutral} />
+                      <YAxis stroke={colors.neutral} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: colors.surface, border: `1px solid ${colors.neutralLight}` }}
+                      />
+                      <Legend />
+                      <Bar dataKey="incoming" fill={colors.secondary} name="Incoming" />
+                      <Bar dataKey="outgoing" fill={colors.primary} name="Outgoing" />
+                      <Bar dataKey="delayed" fill={colors.accent} name="Delayed" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Daily Operations */}
+            <Card className="border-slate-200 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-slate-900">Daily Operations Overview</CardTitle>
+                <CardDescription className="text-slate-600">
+                  Weekly activity across orders, shipments, and inventory
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={dailyOperationsData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={colors.neutralLight} />
+                    <XAxis dataKey="day" stroke={colors.neutral} />
+                    <YAxis stroke={colors.neutral} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: colors.surface, border: `1px solid ${colors.neutralLight}` }}
+                    />
+                    <Legend />
+                    <Line type="monotone" dataKey="orders" stroke={colors.secondary} strokeWidth={2} name="Orders" />
+                    <Line
+                      type="monotone"
+                      dataKey="shipments"
+                      stroke={colors.primary}
+                      strokeWidth={2}
+                      name="Shipments"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="inventory"
+                      stroke={colors.warning}
+                      strokeWidth={2}
+                      name="Inventory Updates"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="operations" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Recent Shipments */}
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-slate-900">Recent Shipments</CardTitle>
+                  <CardDescription className="text-slate-600">Latest shipment updates from vendors</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {recentShipments.map((shipment) => (
+                      <div
+                        key={shipment.id}
+                        className="flex items-center justify-between p-4 border border-slate-200 rounded-lg bg-white"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium text-slate-900">{shipment.id}</span>
+                            <Badge
+                              style={{
+                                backgroundColor:
+                                  shipment.status === "Delayed"
+                                    ? colors.accent
+                                    : shipment.status === "Arrived"
+                                      ? colors.secondary
+                                      : colors.primary,
+                                color: "white",
+                              }}
+                            >
+                              {shipment.status}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-slate-600">{shipment.vendor}</p>
+                          <p className="text-xs text-slate-500">Expected: {shipment.expectedArrival}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium text-slate-900">S${shipment.value.toLocaleString()}</p>
+                          {shipment.delay > 0 && (
+                            <p className="text-xs" style={{ color: colors.accent }}>
+                              {shipment.delay} days delayed
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4">
+                    <Button
+                      asChild
+                      className="w-full"
+                      style={{ backgroundColor: colors.primary, borderColor: colors.primary }}
+                    >
+                      <Link href="/shipments">View All Shipments</Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Critical Inventory */}
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-slate-900">Critical Inventory Items</CardTitle>
+                  <CardDescription className="text-slate-600">Items requiring immediate attention</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {criticalInventory.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between p-4 border border-slate-200 rounded-lg bg-white"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium text-slate-900">{item.item}</span>
+                            <Badge
+                              style={{
+                                backgroundColor:
+                                  item.status === "Expired"
+                                    ? colors.accent
+                                    : item.status === "Expiring Soon"
+                                      ? colors.warning
+                                      : colors.neutral,
+                                color: "white",
+                              }}
+                            >
+                              {item.status}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-slate-600">
+                            {item.quantity} {item.unit} remaining
+                          </p>
+                          <p className="text-xs text-slate-500">Expires: {item.expiryDate}</p>
+                        </div>
+                        <div className="text-right">
+                          {item.status === "Expired" && (
+                            <AlertTriangle className="h-5 w-5" style={{ color: colors.accent }} />
+                          )}
+                          {item.status === "Expiring Soon" && (
+                            <Clock className="h-5 w-5" style={{ color: colors.warning }} />
+                          )}
+                          {item.status === "Low Stock" && (
+                            <TrendingDown className="h-5 w-5" style={{ color: colors.neutral }} />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4">
+                    <Button
+                      asChild
+                      className="w-full"
+                      style={{ backgroundColor: colors.primary, borderColor: colors.primary }}
+                    >
+                      <Link href="/inventory">Manage All Inventory</Link>
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
+
         </Tabs>
       </main>
 
-      {/* Chatbot Toggle */}
-      <Button onClick={() => setIsChatOpen(true)} className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg hover:shadow-xl">
+      {/* Chatbot Toggle Button */}
+      <Button
+        onClick={() => setIsChatOpen(true)}
+        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-shadow"
+        style={{ backgroundColor: colors.primary, borderColor: colors.primary }}
+      >
         <MessageCircle className="h-6 w-6" />
       </Button>
+
+      {/* Chatbot Component */}
       <ChatBot isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
     </div>
-  )
-}
-
-// ---------------- Small client helpers ----------------
-function KpiTile({ label, value, hint, icon }: { label: string; value: string; hint?: string; icon?: React.ReactNode }) {
-  return (
-    <Card className="border-slate-200 shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-xs font-medium text-slate-600">{label}</CardTitle>
-        {icon}
-      </CardHeader>
-      <CardContent>
-        <div className="text-xl font-semibold text-gray-900">{value}</div>
-        {hint && <p className="text-xs text-slate-500">{hint}</p>}
-      </CardContent>
-    </Card>
-  )
-}
-
-function BarRow({ label, value, total }: { label: string; value: number; total: number }) {
-  const pct = total ? (value / total) * 100 : 0
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between">
-        <span className="text-sm text-slate-700">{label}</span>
-        <span className="text-sm font-medium text-gray-900">{value}</span>
-      </div>
-      <Progress value={pct} className="h-2" />
-    </div>
-  )
-}
-
-function badgeClassForShipment(status: RecentShipment['status']) {
-  if (status === 'Delayed') return 'bg-red-600 text-white'
-  if (status === 'Arrived') return 'bg-emerald-600 text-white'
-  return 'bg-blue-700 text-white'
-}
-function badgeClassForInventory(status: CriticalInventory['status']) {
-  if (status === 'Expired') return 'bg-red-600 text-white'
-  if (status === 'Expiring Soon') return 'bg-amber-600 text-white'
-  return 'bg-gray-500 text-white'
-}
-function toDate(iso?: string) {
-  try { return iso ? new Date(iso).toLocaleDateString() : '' } catch { return iso ?? '' }
-}
-
-function AnalyticsCharts({ shipmentTrends, inventoryValueDist, dailyOps }: { shipmentTrends: ShipmentTrendPoint[]; inventoryValueDist: InventoryValueSlice[]; dailyOps: DailyOpsPoint[] }) {
-  return (
-    <>
-      {/* Inventory value distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-slate-900">Inventory Value Distribution</CardTitle>
-            <CardDescription className="text-slate-600">Current inventory value by category</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie data={inventoryValueDist} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                  {inventoryValueDist.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip formatter={(v: number) => [`S$${v.toLocaleString()}`, 'Value']} />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Shipment trends */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-slate-900">Shipment Trends</CardTitle>
-            <CardDescription className="text-slate-600">Weekly shipment activity and delays</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={shipmentTrends}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="week" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="incoming" fill="#059669" name="Incoming" />
-                <Bar dataKey="outgoing" fill="#1e40af" name="Outgoing" />
-                <Bar dataKey="delayed" fill="#dc2626" name="Delayed" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Daily operations */}
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-slate-900">Daily Operations Overview</CardTitle>
-          <CardDescription className="text-slate-600">Weekly activity across shipments and inventory</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={dailyOps}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="day" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="shipments" stroke="#1e40af" strokeWidth={2} name="Shipments" />
-              <Line type="monotone" dataKey="inventory" stroke="#d97706" strokeWidth={2} name="Inventory Updates" />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-    </>
-  )
-}
-
-// ---------------- Explore (Drag & Drop) ----------------
-function ExplorePanel() {
-  const [dataset, setDataset] = useState<'shipments' | 'inventory'>('shipments')
-  const [groupBy, setGroupBy] = useState<string>('status')
-  const [measure, setMeasure] = useState<{ op: 'count' | 'sum' | 'avg'; field?: string }>({ op: 'count' })
-  const [rows, setRows] = useState<Array<{ key: string; value: number }>>([])
-  const [loading, setLoading] = useState(false)
-
-  const dims = dataset === 'shipments' ? ['status', 'vendor'] : ['category', 'status']
-  const meas = dataset === 'shipments' ? ['count', 'value'] : ['count', 'value']
-
-  async function runQuery() {
-    setLoading(true)
-    try {
-      const body: any = { dataset, groupBy, agg: measure }
-      const res = await fetch('/api/explore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-      const json = await res.json()
-      setRows(json.rows || [])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function onDragStart(e: React.DragEvent, payload: string) {
-    e.dataTransfer.setData('text/plain', payload)
-  }
-  function onDropShelf(e: React.DragEvent, shelf: 'group' | 'measure') {
-    e.preventDefault()
-    const txt = e.dataTransfer.getData('text/plain')
-    if (!txt) return
-    const [kind, name] = txt.split(':')
-    if (shelf === 'group' && kind === 'dim') setGroupBy(name)
-    if (shelf === 'measure' && kind === 'mea') {
-      if (name === 'count') setMeasure({ op: 'count' })
-      else setMeasure({ op: 'sum', field: name })
-    }
-  }
-
-  return (
-    <Card className="border-slate-200 shadow-sm">
-      <CardHeader>
-        <CardTitle className="text-slate-900">Explore (Drag & Drop)</CardTitle>
-        <CardDescription className="text-slate-600">Drag fields onto shelves, then Run</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-3 items-center">
-          <label className="text-sm">Dataset</label>
-          <select className="border rounded px-2 py-1" value={dataset} onChange={(e) => { setDataset(e.target.value as any); setGroupBy('status'); setMeasure({ op: 'count' }); setRows([]); }}>
-            <option value="shipments">Shipments</option>
-            <option value="inventory">Inventory</option>
-          </select>
-          <Button size="sm" onClick={runQuery} disabled={loading}>{loading ? 'Running…' : 'Run'}</Button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <div className="text-xs font-semibold mb-2">Dimensions</div>
-            <div className="flex flex-wrap gap-2">
-              {dims.map((d) => (
-                <span key={d} draggable onDragStart={(e) => onDragStart(e, `dim:${d}`)} className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs cursor-grab">{d}</span>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs font-semibold mb-2">Measures</div>
-            <div className="flex flex-wrap gap-2">
-              {meas.map((m) => (
-                <span key={m} draggable onDragStart={(e) => onDragStart(e, `mea:${m}`)} className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs cursor-grab">{m}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDropShelf(e, 'group')} className="border-2 border-dashed rounded p-3">
-            <div className="text-xs font-semibold mb-1">Group by</div>
-            <div className="text-sm">{groupBy || '— drop a dimension —'}</div>
-          </div>
-          <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDropShelf(e, 'measure')} className="border-2 border-dashed rounded p-3">
-            <div className="text-xs font-semibold mb-1">Measure</div>
-            <div className="flex items-center gap-2 text-sm">
-              {measure.op === 'count' ? 'count(*)' : `${measure.op}(${measure.field})`}
-              {measure.field && (
-                <select className="border rounded px-1 py-0.5 text-xs" value={measure.op} onChange={(e) => setMeasure({ ...measure, op: e.target.value as any })}>
-                  <option value="sum">sum</option>
-                  <option value="avg">avg</option>
-                </select>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-2">
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={rows}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="key" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="value" fill="#1e40af" name="Value" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </CardContent>
-    </Card>
   )
 }
