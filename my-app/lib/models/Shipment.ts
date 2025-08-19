@@ -1,22 +1,29 @@
+// lib/models/Shipment.ts
 import mongoose, { Schema, model, models, Document } from "mongoose";
 
+export type ShipmentStatus = "In Transit" | "Delayed" | "Delivered";
+
+function toDate(v: any) {
+    if (v == null || v === "") return undefined;
+    const d = v instanceof Date ? v : new Date(v);
+    return isNaN(d.getTime()) ? undefined : d;
+}
+
 export interface ShipmentDoc extends Document {
-    // keep _id as ObjectId
     type: "incoming" | "outgoing";
-    id: string;              // your own shipment number
+    id: string;                    // business ID
     vendor?: string;
     customer?: string;
     description?: string;
     price: number;
-    status: string;
-    destination: string; // optional, for outgoing shipments
+    status: ShipmentStatus;        // 🔒 enum
+    destination: string;
     eta?: Date;
     newEta?: Date;
     deliveredDate?: Date;
     shippingDate?: Date;
     createdAt?: Date;
     updatedAt?: Date;
-    // Email-specific metadata (optional)
     emailMetadata?: {
         emailId?: string;
         trackingNumber?: string;
@@ -37,19 +44,33 @@ export interface ShipmentDoc extends Document {
 
 const ShipmentSchema = new Schema<ShipmentDoc>(
     {
-        id: { type: String, required: true, unique: true },   // business ID
+        // Alias lets you read/write `shipmentId` but persist in `id`
+        id: { type: String, required: true, unique: true, alias: "shipmentId" },
         type: { type: String, enum: ["incoming", "outgoing"], required: true },
+
         vendor: String,
         customer: String,
         description: String,
-        price: { type: Number, required: true },
-        status: { type: String, required: true },
-        destination: { type: String, default: "warehouse-A" }, // default for outgoing shipment
-        eta: Date,
-        newEta: Date,
-        deliveredDate: Date,
-        shippingDate: Date,
-        // Email-specific metadata for AI-analyzed shipments
+
+        price: { type: Number, required: true, default: 0 },
+
+        // 🔒 only 3 allowed values
+        status: {
+            type: String,
+            enum: ["In Transit", "Delayed", "Delivered"],
+            default: "In Transit",
+            required: true,
+            index: true,
+        },
+
+        destination: { type: String, default: "warehouse-A" },
+
+        // String → Date coercion (import-safe)
+        eta: { type: Date, set: toDate },
+        newEta: { type: Date, set: toDate },
+        deliveredDate: { type: Date, set: toDate },
+        shippingDate: { type: Date, set: toDate },
+
         emailMetadata: {
             emailId: String,
             trackingNumber: String,
@@ -61,20 +82,39 @@ const ShipmentSchema = new Schema<ShipmentDoc>(
             suggestedAction: String,
             emailSubject: String,
             emailFrom: Schema.Types.Mixed,
-            emailTimestamp: Date,
+            emailTimestamp: { type: Date, set: toDate },
             originalType: String,
-            items: [{
-                name: String,
-                quantity: Number,
-                description: String,
-                price: Number
-            }],
-            extractedPrice: Number
-        }
+            items: [
+                {
+                    name: String,
+                    quantity: Number,
+                    description: String,
+                    price: Number,
+                },
+            ],
+            extractedPrice: Number,
+        },
     },
-    { timestamps: true }
+    { timestamps: true, collection: "shipments" }
 );
 
-const Shipment = models.Shipment || model<ShipmentDoc>("Shipment", ShipmentSchema);
-export default Shipment;
+// Helpful virtuals
+ShipmentSchema.virtual("isDelayed").get(function (this: ShipmentDoc) {
+    return this.status === "Delayed";
+});
+ShipmentSchema.virtual("isDelivered").get(function (this: ShipmentDoc) {
+    return this.status === "Delivered";
+});
 
+// (Optional) Safety: if some code writes an invalid status, normalize here or throw.
+// We recommend normalizing *before* DB (your commit route already does that).
+ShipmentSchema.pre("validate", function (next) {
+    if (!this.status) this.status = "In Transit";
+    next();
+});
+
+const Shipment =
+    (models.Shipment as mongoose.Model<ShipmentDoc>) ||
+    model<ShipmentDoc>("Shipment", ShipmentSchema);
+
+export default Shipment;

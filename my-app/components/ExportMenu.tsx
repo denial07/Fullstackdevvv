@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import type { Table } from "@tanstack/react-table";
+import type { Table, Column } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
@@ -9,6 +9,7 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuSeparator,
+    DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
     Dialog,
@@ -24,7 +25,7 @@ import { exportToXlsx, exportWarehouseSheet } from "@/lib/export-excel";
 
 /** --------- Types you can pass from your page ---------- */
 export type ColumnSpec = {
-    key: string;    // may contain "a|b|c" meaning "first non-empty of a/b/c"
+    key: string; // may contain "a|b|c" meaning "first non-empty of a/b/c"
     label: string;
     width?: string;
 };
@@ -36,22 +37,21 @@ type WarehouseMap = {
 };
 
 type Props = {
-    /** Option A (recommended for your page): export from state */
+    /** Option A: export from TanStack table (recommended – gets filtered/paginated/selected rows) */
+    table?: Table<any>;
+
+    /** Option B: export from plain state (fallback) */
     rows?: Record<string, unknown>[];
     columnSpecs?: ColumnSpec[];
-
-    /** Option B: export from TanStack table (filtered rows etc.) */
-    table?: Table<any>;
 
     fileNameBase?: string;
     warehouseMap?: WarehouseMap;
 };
 
-/** Utility: pretty label from an id */
 const prettyFromId = (id: string) =>
     id.replace(/[_\-.]/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 
-/** Utility: get value for "a|b|c" composite key from a plain row object */
+/** Composite key reader for plain rows */
 function valueFromComposite(row: Record<string, unknown>, compositeKey: string) {
     if (!compositeKey.includes("|")) return (row as any)[compositeKey];
     const parts = compositeKey.split("|");
@@ -61,90 +61,175 @@ function valueFromComposite(row: Record<string, unknown>, compositeKey: string) 
     return val ?? "";
 }
 
+/** Safely read a table cell; falls back to original if accessor throws */
+function safeGetTableValue(row: any, col: Column<any, unknown>) {
+    try {
+        return row.getValue(col.id);
+    } catch {
+        const orig = row.original;
+        const key = (col.columnDef as any).accessorKey as string | undefined;
+        if (key) return (orig as any)?.[key];
+        return (orig as any)?.[col.id];
+    }
+}
+
 export default function ExportMenu({
+    table,
     rows,
     columnSpecs,
-    table,
     fileNameBase = "export",
     warehouseMap,
 }: Props) {
     const [open, setOpen] = React.useState(false);
 
-    /** ---- Build a unified column list the menu can show ---- */
+    // ------------- Column lists (table-aware) -------------
+    const visibleCols = React.useMemo(
+        () =>
+            table
+                ? table
+                    .getVisibleLeafColumns()
+                    .filter((c) => !["select", "actions"].includes(c.id))
+                : [],
+        [table]
+    );
+
+    const allLeafCols = React.useMemo(
+        () =>
+            table
+                ? table
+                    .getAllLeafColumns()
+                    .filter((c) => !["select", "actions"].includes(c.id))
+                : [],
+        [table]
+    );
+
+    // For the custom dialog: show ALL columns if we have a table; otherwise from props
     type UnifiedCol =
-        | { id: string; label: string; kind: "props" }
-        | { id: string; label: string; kind: "table" };
+        | { id: string; label: string; _tableCol?: Column<any, unknown> }
+        | { id: string; label: string };
 
     const columnsForUI: UnifiedCol[] = React.useMemo(() => {
         if (table) {
-            const leaf = table.getAllLeafColumns().filter((c) => !["select", "actions"].includes(c.id));
-            return leaf.map((c) => ({
+            return allLeafCols.map((c) => ({
                 id: c.id,
-                label: typeof c.columnDef.header === "string" ? (c.columnDef.header as string) : prettyFromId(c.id),
-                kind: "table" as const,
+                label:
+                    typeof c.columnDef.header === "string"
+                        ? (c.columnDef.header as string)
+                        : prettyFromId(c.id),
+                _tableCol: c,
             }));
         }
-        // fallback to page state
         return (columnSpecs ?? []).map((c) => ({
             id: c.key,
             label: c.label || prettyFromId(c.key),
-            kind: "props" as const,
         }));
-    }, [table, columnSpecs]);
+    }, [table, allLeafCols, columnSpecs]);
 
+    // Preselect: visible columns if table; otherwise all provided
     const [selectedIds, setSelectedIds] = React.useState<string[]>(
-        columnsForUI.map((c) => c.id)
+        table ? visibleCols.map((c) => c.id) : (columnsForUI.map((c) => c.id) ?? [])
     );
 
     React.useEffect(() => {
-        setSelectedIds(columnsForUI.map((c) => c.id));
-    }, [columnsForUI]);
+        setSelectedIds(table ? visibleCols.map((c) => c.id) : columnsForUI.map((c) => c.id));
+    }, [table, visibleCols, columnsForUI]);
 
-    /** ---- Get the rows to export ---- */
-    const exportRowsFromTable = React.useMemo(
-        () => (table ? table.getFilteredRowModel().rows : []),
-        [table]
-    );
-    const exportRowsFromProps = rows ?? [];
+    // ------------- Row sources (selection > filtered > fallback) -------------
+    const selectedRows = table ? table.getSelectedRowModel().rows : [];
+    const hasSelection = selectedRows.length > 0;
 
-    /** ---- Helpers to read a value for a given column id ---- */
-    function getValueFromTableRow(row: any, colId: string) {
-        // TanStack row.getValue() uses the column id (works for accessorKey/accessorFn)
-        return row.getValue(colId);
+    const filteredRows = table ? table.getFilteredRowModel().rows : [];
+    const pageRows = table ? table.getPaginationRowModel().rows : [];
+
+    const propsRows = rows ?? [];
+
+    // ------------- Helpers to build export payloads -------------
+    function toObjectsFromTable(rows: any[], cols: Column<any, unknown>[]) {
+        const headers = cols.map((c) =>
+            typeof c.columnDef.header === "string" ? (c.columnDef.header as string) : prettyFromId(c.id)
+        );
+
+        const data = rows.map((r) =>
+            cols.reduce((acc, c, idx) => {
+                acc[headers[idx]] = safeGetTableValue(r, c);
+                return acc;
+            }, {} as Record<string, unknown>)
+        );
+
+        return { headers, data };
     }
 
-    function getValueFromPlainRow(row: Record<string, unknown>, colId: string) {
-        return valueFromComposite(row, colId);
+    function toObjectsFromProps(
+        rows: Record<string, unknown>[],
+        colIds: { id: string; label: string }[]
+    ) {
+        const headers = colIds.map((c) => c.label);
+        const data = rows.map((r) =>
+            colIds.reduce((acc, c, idx) => {
+                acc[headers[idx]] = valueFromComposite(r, c.id);
+                return acc;
+            }, {} as Record<string, unknown>)
+        );
+        return { headers, data };
     }
 
-    /** ---- Export All ---- */
-    const exportAll = () => {
-        const chosen = columnsForUI;
-        const headerOrder = chosen.map((c) => c.label);
-
-        const data =
-            table
-                ? exportRowsFromTable.map((r: any) =>
-                    chosen.reduce((acc, c) => {
-                        acc[c.label] = getValueFromTableRow(r, c.id);
-                        return acc;
-                    }, {} as Record<string, unknown>)
-                )
-                : exportRowsFromProps.map((r) =>
-                    chosen.reduce((acc, c) => {
-                        acc[c.label] = getValueFromPlainRow(r, c.id);
-                        return acc;
-                    }, {} as Record<string, unknown>)
-                );
-
+    // ------------- Export actions -------------
+    const exportFilteredVisible = () => {
+        if (table) {
+            const cols = visibleCols;
+            const srcRows = hasSelection ? selectedRows : filteredRows;
+            const { headers, data } = toObjectsFromTable(srcRows, cols);
+            exportToXlsx(data, {
+                fileName: `${fileNameBase}_filtered_visible`,
+                sheetName: "Filtered",
+                headerOrder: headers,
+            });
+            return;
+        }
+        // Fallback (no table): export all provided
+        const colIds = (columnSpecs ?? []).map((c) => ({ id: c.key, label: c.label || prettyFromId(c.key) }));
+        const { headers, data } = toObjectsFromProps(propsRows, colIds);
         exportToXlsx(data, {
             fileName: `${fileNameBase}_all`,
             sheetName: "All",
-            headerOrder,
+            headerOrder: headers,
         });
     };
 
-    /** ---- Export Warehouse ---- */
+    const exportFilteredAllCols = () => {
+        if (table) {
+            const cols = allLeafCols;
+            const srcRows = hasSelection ? selectedRows : filteredRows;
+            const { headers, data } = toObjectsFromTable(srcRows, cols);
+            exportToXlsx(data, {
+                fileName: `${fileNameBase}_filtered_all`,
+                sheetName: "Filtered(All Cols)",
+                headerOrder: headers,
+            });
+            return;
+        }
+        // Fallback: same as above, no hidden/visible concept
+        const colIds = (columnSpecs ?? []).map((c) => ({ id: c.key, label: c.label || prettyFromId(c.key) }));
+        const { headers, data } = toObjectsFromProps(propsRows, colIds);
+        exportToXlsx(data, {
+            fileName: `${fileNameBase}_all`,
+            sheetName: "All",
+            headerOrder: headers,
+        });
+    };
+
+    const exportCurrentPageVisible = () => {
+        if (!table) return;
+        const cols = visibleCols;
+        const srcRows = hasSelection ? selectedRows : pageRows;
+        const { headers, data } = toObjectsFromTable(srcRows, cols);
+        exportToXlsx(data, {
+            fileName: `${fileNameBase}_page_visible`,
+            sheetName: "Page",
+            headerOrder: headers,
+        });
+    };
+
     const pick = (needles: string[]) =>
         columnsForUI.find((c) => needles.some((n) => c.id.toLowerCase().includes(n)))?.id;
 
@@ -153,42 +238,56 @@ export default function ExportMenu({
         const descId = warehouseMap?.description ?? pick(["description", "desc"]);
         const qtyId = warehouseMap?.qty ?? pick(["qty", "quantity", "container"]);
 
-        const rowsData = table ? exportRowsFromTable : exportRowsFromProps;
+        if (table) {
+            const srcRows = hasSelection ? selectedRows : filteredRows;
+            const data = srcRows.map((r: any, i: number) => ({
+                "No.": i + 1,
+                ETA: etaId ? r.getValue(etaId) : "",
+                Description: descId ? r.getValue(descId) : "",
+                "Qty (container)": qtyId ? r.getValue(qtyId) : "",
+            }));
+            exportWarehouseSheet(data, { fileName: `${fileNameBase}_warehouse` });
+            return;
+        }
 
-        const data = rowsData.map((r: any, i: number) => ({
+        // Fallback (props)
+        const data = (rows ?? []).map((r, i) => ({
             "No.": i + 1,
-            ETA: etaId ? (table ? getValueFromTableRow(r, etaId) : getValueFromPlainRow(r, etaId)) : "",
-            Description: descId ? (table ? getValueFromTableRow(r, descId) : getValueFromPlainRow(r, descId)) : "",
-            "Qty (container)": qtyId ? (table ? getValueFromTableRow(r, qtyId) : getValueFromPlainRow(r, qtyId)) : "",
+            ETA: etaId ? valueFromComposite(r, etaId) : "",
+            Description: descId ? valueFromComposite(r, descId) : "",
+            "Qty (container)": qtyId ? valueFromComposite(r, qtyId) : "",
         }));
-
         exportWarehouseSheet(data, { fileName: `${fileNameBase}_warehouse` });
     };
 
-    /** ---- Export Custom ---- */
     const exportCustom = () => {
+        // Build chosen columns (table-aware if possible)
+        if (table) {
+            const byId: Record<string, Column<any, unknown>> = {};
+            allLeafCols.forEach((c) => (byId[c.id] = c));
+
+            const cols = selectedIds
+                .map((id) => byId[id])
+                .filter(Boolean);
+
+            const srcRows = hasSelection ? selectedRows : filteredRows;
+            const { headers, data } = toObjectsFromTable(srcRows, cols);
+            exportToXlsx(data, {
+                fileName: `${fileNameBase}_custom`,
+                sheetName: "Custom",
+                headerOrder: headers,
+            });
+            setOpen(false);
+            return;
+        }
+
+        // Fallback (props)
         const chosen = columnsForUI.filter((c) => selectedIds.includes(c.id));
-        const headerOrder = chosen.map((c) => c.label);
-
-        const data =
-            table
-                ? exportRowsFromTable.map((r: any) =>
-                    chosen.reduce((acc, c) => {
-                        acc[c.label] = getValueFromTableRow(r, c.id);
-                        return acc;
-                    }, {} as Record<string, unknown>)
-                )
-                : exportRowsFromProps.map((r) =>
-                    chosen.reduce((acc, c) => {
-                        acc[c.label] = getValueFromPlainRow(r, c.id);
-                        return acc;
-                    }, {} as Record<string, unknown>)
-                );
-
+        const { headers, data } = toObjectsFromProps(propsRows, chosen);
         exportToXlsx(data, {
             fileName: `${fileNameBase}_custom`,
             sheetName: "Custom",
-            headerOrder,
+            headerOrder: headers,
         });
         setOpen(false);
     };
@@ -198,12 +297,31 @@ export default function ExportMenu({
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-2" /> Export
+                        <Download className="h-4 w-4 mr-2" />
+                        Export
                     </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem onClick={exportAll}>Export all columns</DropdownMenuItem>
-                    <DropdownMenuItem onClick={exportWarehouse}>Export for warehouse staff</DropdownMenuItem>
+                <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuLabel>
+                        {hasSelection ? "Export (selected rows)" : "Export (filtered rows)"}
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem onClick={exportFilteredVisible}>
+                        Filtered + Visible columns
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={exportFilteredAllCols}>
+                        Filtered + All columns
+                    </DropdownMenuItem>
+                    {table && (
+                        <>
+                            <DropdownMenuItem onClick={exportCurrentPageVisible}>
+                                Current page + Visible columns
+                            </DropdownMenuItem>
+                        </>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={exportWarehouse}>
+                        Export for warehouse staff
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => setOpen(true)}>
                         <SlidersHorizontal className="h-4 w-4 mr-2" />
@@ -212,6 +330,7 @@ export default function ExportMenu({
                 </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Custom columns dialog */}
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>

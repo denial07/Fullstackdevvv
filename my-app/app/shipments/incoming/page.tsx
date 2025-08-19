@@ -1,21 +1,35 @@
-// app/(your-folder)/incoming/page.tsx
+
 "use client";
 
 import * as React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table as UiTable, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table as UiTable,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import {
-  ArrowLeft, Search, Filter, Download, Ship, Clock, AlertTriangle,
+  ArrowLeft,
+  Search,
+  Filter,
+  Ship,
+  Clock,
+  AlertTriangle,
 } from "lucide-react";
 import { UserNav } from "@/components/user-nav";
 
@@ -28,43 +42,90 @@ import {
   getSortedRowModel,
   getPaginationRowModel,
   type ColumnDef,
+  type ColumnFiltersState,
 } from "@tanstack/react-table";
 
 /** -------- helpers/types -------- */
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case "Arrived": return "default";
+    case "Arrived":
+      return "default";
     case "In Transit":
-    case "Customs Clearance": return "secondary";
-    case "Delayed": return "destructive";
-    case "Processing": return "outline";
-    default: return "secondary";
+    case "Customs Clearance":
+      return "secondary";
+    case "Delayed":
+      return "destructive";
+    case "Processing":
+      return "outline";
+    default:
+      return "secondary";
   }
 };
 
-// Fully dynamic row type (derived at runtime from your fetched data)
 type Row = Record<string, unknown>;
 
-// Your column model used for rendering + editing + export mapping
 type ColumnSpec = {
-  key: string;      // may be "a|b|c" (composite)
+  key: string; // may be "a|b|c" (composite)
   label: string;
   width?: string;
 };
 
-// You referenced this in your add-column logic — keeping it here
 function getDefaultValueFromType(t: string) {
   switch (t) {
-    case "number": return 0;
-    case "boolean": return false;
-    case "date": return new Date().toISOString().slice(0, 10);
+    case "number":
+      return 0;
+    case "boolean":
+      return false;
+    case "date":
+      return new Date().toISOString().slice(0, 10);
     case "string":
-    default: return "";
+    default:
+      return "";
   }
 }
 
-/** -------- page component -------- */
+/** ---- NEW: custom filter functions for TanStack ---- */
+const filterFns = {
+  inArray: (row: any, columnId: string, filterValue?: string[]) => {
+    if (!filterValue || filterValue.length === 0) return true;
+    const v = row.getValue(columnId);
+    return filterValue.includes(String(v));
+  },
+  inDateRange: (
+    row: any,
+    columnId: string,
+    range?: { from?: string; to?: string }
+  ) => {
+    if (!range || (!range.from && !range.to)) return true;
+    const raw = row.getValue(columnId);
+    if (!raw) return false;
+    const d = new Date(String(raw));
+    if (Number.isNaN(d.getTime())) return false;
+    if (range.from && d < new Date(range.from)) return false;
+    if (range.to && d > new Date(range.to)) return false;
+    return true;
+  },
+  inNumberRange: (
+    row: any,
+    columnId: string,
+    range?: { min?: number; max?: number }
+  ) => {
+    if (!range || (range.min == null && range.max == null)) return true;
+    const n = Number(row.getValue(columnId));
+    if (Number.isNaN(n)) return false;
+    if (range.min != null && n < range.min) return false;
+    if (range.max != null && n > range.max) return false;
+    return true;
+  },
+  includesAnyCI: (row: any, columnId: string, values?: string[]) => {
+    if (!values || values.length === 0) return true;
+    const v = row.getValue(columnId);
+    if (v == null) return false;
+    const s = String(v).toLowerCase();
+    return values.some((needle) => s.includes(String(needle).toLowerCase()));
+  },
+} as const;
 
 export default function IncomingShipmentsPage() {
   // dynamic data & columns
@@ -80,6 +141,19 @@ export default function IncomingShipmentsPage() {
   const [newColumn, setNewColumn] = useState("");
   const [newColumnType, setNewColumnType] = useState("string");
 
+  // NEW: search + filters state (drives table + export)
+  const [globalFilter, setGlobalFilter] = useState("");
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Named filter models (UI)
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [etaRange, setEtaRange] = useState<{ from?: string; to?: string }>({});
+  const [valueRange, setValueRange] = useState<{ min?: number; max?: number }>({});
+  const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
+  const [selectedOrigins, setSelectedOrigins] = useState<string[]>([]);
+  const [trackingContains, setTrackingContains] = useState<string>("");
+
   useEffect(() => {
     const loadShipments = async () => {
       const res = await fetch("/api/shipments");
@@ -90,48 +164,41 @@ export default function IncomingShipmentsPage() {
         return;
       }
 
-      // find candidate keys that represent "type" (e.g., "type", "Type", "shipmentType")
       const rawKeys = Array.from(new Set(data.flatMap(Object.keys)));
-      const typeKeys = rawKeys.filter(k => /type/i.test(k));
+      const typeKeys = rawKeys.filter((k) => /type/i.test(k));
 
-      // helper to read the first available type-like value from a row
       const getTypeVal = (row: Row) => {
         for (const k of typeKeys) {
-          const v = row[k as keyof Row];
+          const v = (row as any)[k as keyof Row];
           if (v != null) return String(v);
         }
-        // explicit fallbacks if no regex match was found
         return (row as any).type ?? (row as any).Type ?? undefined;
       };
 
-      // keep only "Incoming" (case-insensitive)
-      const filtered = data.filter(r => getTypeVal(r)?.toLowerCase() === "incoming");
-
-      // if nothing matches, show empty table (and skip column inference)
+      const filtered = data.filter((r) => getTypeVal(r)?.toLowerCase() === "incoming");
       if (!filtered.length) {
         setShipments([]);
         setColumns([]);
         return;
       }
 
-      // infer columns from the filtered dataset only
       const filteredKeys = Array.from(new Set(filtered.flatMap(Object.keys)));
 
-      // optional server-side alias map (label -> raw key(s)), using filtered keys
       const aliasRes = await fetch("/api/normalize-columns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ columns: filteredKeys }),
       });
 
-      // expected shape: { "ETA": "eta", "Description": ["desc","description"], ... }
       const aliasMap = (await aliasRes.json()) as Record<string, string | string[]>;
 
-      const inferredColumns: ColumnSpec[] = Object.entries(aliasMap).map(([label, raw]) => ({
-        key: Array.isArray(raw) ? raw.join("|") : raw, // composite key to support merging values
-        label,  
-        width: "min-w-[200px]",
-      }));
+      const inferredColumns: ColumnSpec[] = Object.entries(aliasMap).map(
+        ([label, raw]) => ({
+          key: Array.isArray(raw) ? raw.join("|") : raw,
+          label,
+          width: "min-w-[200px]",
+        })
+      );
 
       setColumns(inferredColumns);
       setShipments(filtered);
@@ -140,36 +207,159 @@ export default function IncomingShipmentsPage() {
     loadShipments();
   }, []);
 
+  /** ----- identify important columns for filters ----- */
+  const statusColId = useMemo(
+    () => columns.find((c) => /status/i.test(c.key) || /status/i.test(c.label))?.key,
+    [columns]
+  );
+  const etaColId = useMemo(
+    () =>
+      columns.find(
+        (c) => /\beta\b|eta|arrival|date/i.test(c.key) || /\bETA\b|Arrival|Date/i.test(c.label)
+      )?.key,
+    [columns]
+  );
+  const valueColId = useMemo(
+    () =>
+      columns.find(
+        (c) => /declaredvalue|value|amount|price|cost/i.test(c.key) || /Value|Amount|Price/i.test(c.label)
+      )?.key,
+    [columns]
+  );
+  const vendorColId = React.useMemo(
+    () => columns.find(c => /vendor|supplier/i.test(c.key) || /Vendor|Supplier/i.test(c.label))?.key,
+    [columns]
+  );
+
+  const originColId = React.useMemo(
+    () => columns.find(c => /origin|country|port|from/i.test(c.key) || /Origin|Country|Port/i.test(c.label))?.key,
+    [columns]
+  );
+
+  const trackingColId = React.useMemo(
+    () => columns.find(c => /tracking/i.test(c.key) || /Tracking/i.test(c.label))?.key,
+    [columns]
+  );
 
   /** ----- column defs for TanStack (built from your ColumnSpec) ----- */
-  const columnDefs = React.useMemo<ColumnDef<Row>[]>(() => {
-    const defs: ColumnDef<Row>[] = columns.map((c) => ({
-      id: c.key,
-      header: c.label || c.key,
-      accessorFn: (row) => {
-        // support composite "a|b|c": pick first non-empty
-        if (c.key.includes("|")) {
-          const parts = c.key.split("|");
-          const val = parts
-            .map((k) => (row as any)[k])
-            .find((v) => v !== undefined && v !== null && v !== "");
-          return val ?? "";
-        }
-        return (row as any)[c.key];
-      },
-    }));
-    return defs;
-  }, [columns]);
+  const columnDefs = useMemo<ColumnDef<Row>[]>(() => {
+    const defs: ColumnDef<Row>[] = columns.map((c) => {
+      const isStatus = c.key === statusColId;
+      const isEta = c.key === etaColId;
+      const isValue = c.key === valueColId;
+      const isVendor = c.key === vendorColId;
+      const isOrigin = c.key === originColId;
+      const isTracking = c.key === trackingColId;
 
-  /** ----- TanStack table instance (used by ExportMenu) ----- */
+      return {
+        id: c.key,
+        header: c.label || c.key,
+        enableGlobalFilter: true,
+        filterFn:
+          isStatus ? "inArray" :
+            isEta ? "inDateRange" :
+              isValue ? "inNumberRange" :
+                isVendor ? "inArray" : // or "includesAnyCI" for partials
+                  isOrigin ? "inArray" : // or "includesAnyCI"
+                    isTracking ? "includesString" :
+                      "includesString",
+        accessorFn: (row) => {
+          if (c.key.includes("|")) {
+            const parts = c.key.split("|");
+            const val = parts
+              .map((k) => (row as any)[k])
+              .find((v) => v !== undefined && v !== null && v !== "");
+            return val ?? "";
+          }
+          return (row as any)[c.key];
+        },
+      } as ColumnDef<Row>;
+    });
+    return defs;
+  }, [columns, statusColId, etaColId, valueColId]);
+
+  /** ----- TanStack table instance (drives export now) ----- */
   const tableInstance = useReactTable<Row>({
     data: shipments,
     columns: columnDefs,
+    filterFns, // register custom filter fns
+    state: { globalFilter, columnFilters },
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnFiltersChange: setColumnFilters,
+    globalFilterFn: "includesString",
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    enableGlobalFilter: true,
   });
+
+  /** ----- derive available statuses from pre-filtered data ----- */
+  const statusOptions = useMemo(() => {
+    if (!statusColId) return [] as string[];
+    const set = new Set<string>();
+    tableInstance.getPreFilteredRowModel().flatRows.forEach((r) => {
+      const v = r.getValue(statusColId);
+      if (v != null && v !== "") set.add(String(v));
+    });
+    return Array.from(set).sort();
+  }, [tableInstance, statusColId, shipments]);
+
+  const vendorOptions = useMemo(() => {
+    if (!vendorColId) return [] as string[];
+    const set = new Set<string>();
+    tableInstance.getPreFilteredRowModel().flatRows.forEach((r) => {
+      const v = r.getValue(vendorColId);
+      if (v != null && v !== "") set.add(String(v));
+    });
+    return Array.from(set).sort();
+  }, [tableInstance, vendorColId]);
+
+  const originOptions = useMemo(() => {
+    if (!originColId) return [] as string[];
+    const set = new Set<string>();
+    tableInstance.getPreFilteredRowModel().flatRows.forEach((r) => {
+      const v = r.getValue(originColId);
+      if (v != null && v !== "") set.add(String(v));
+    });
+    return Array.from(set).sort();
+  }, [tableInstance, originColId]);
+
+  useEffect(() => {
+    setColumnFilters((prev) => {
+      const idsToRemove = [
+        statusColId, etaColId, valueColId,
+        vendorColId, originColId, trackingColId,
+      ].filter(Boolean) as string[];
+
+      const next = prev.filter((f) => !idsToRemove.includes(f.id));
+
+      if (statusColId && selectedStatuses.length)
+        next.push({ id: statusColId, value: selectedStatuses });
+
+      if (etaColId && (etaRange.from || etaRange.to))
+        next.push({ id: etaColId, value: { ...etaRange } });
+
+      if (valueColId && (valueRange.min != null || valueRange.max != null))
+        next.push({ id: valueColId, value: { ...valueRange } });
+
+      if (vendorColId && selectedVendors.length)
+        next.push({ id: vendorColId, value: selectedVendors });  // OR values for includesAnyCI
+
+      if (originColId && selectedOrigins.length)
+        next.push({ id: originColId, value: selectedOrigins });
+
+      if (trackingColId && trackingContains.trim())
+        next.push({ id: trackingColId, value: trackingContains.trim() });
+
+      return next;
+    });
+  }, [
+    selectedStatuses, etaRange, valueRange,
+    selectedVendors, selectedOrigins, trackingContains,
+    statusColId, etaColId, valueColId, vendorColId, originColId, trackingColId,
+  ]);
+
 
   /** ----- column header edit helpers ----- */
   const handleEditColumn = (col: { key: string; label: string }) => {
@@ -210,15 +400,14 @@ export default function IncomingShipmentsPage() {
 
   function getRowKey(row: Row, index: number): string {
     const cand =
-      (row as any)._id ??
-      (row as any).id ??
-      (row as any).trackingNumber ??
-      (row as any).uuid;
+      (row as any)._id ?? (row as any).id ?? (row as any).trackingNumber ?? (row as any).uuid;
     return cand != null ? String(cand) : `row-${index}`;
   }
 
   const handleDeleteColumn = async (key: string) => {
-    const ok = window.confirm(`Are you sure you want to delete column "${key}" from all shipments?`);
+    const ok = window.confirm(
+      `Are you sure you want to delete column "${key}" from all shipments?`
+    );
     if (!ok) return;
 
     try {
@@ -267,7 +456,7 @@ export default function IncomingShipmentsPage() {
       setShipments((prev) =>
         prev.map((s) => ({
           ...s,
-          [newColKey]: s[newColKey] ?? defaultValue,
+          [newColKey]: (s as any)[newColKey] ?? defaultValue,
         }))
       );
     } catch (err) {
@@ -278,7 +467,7 @@ export default function IncomingShipmentsPage() {
 
   /** ----- cell edit + persistence ----- */
   const handleEdit = async (id: string, key: string, value: unknown) => {
-    setShipments((prev) => prev.map((s) => (s._id === id ? { ...s, [key]: value } : s)));
+    setShipments((prev) => prev.map((s) => ((s as any)._id === id ? { ...s, [key]: value } : s)));
 
     await fetch(`/api/shipments/${id}`, {
       method: "PATCH",
@@ -389,26 +578,25 @@ export default function IncomingShipmentsPage() {
     );
   };
 
-  /** ----- quick metrics ----- */
-  const totalValue = shipments.reduce((sum, s) => sum + (Number((s as any).value) || 0), 0);
-  const delayed = shipments.filter((s) => (s as any).status === "Delayed").length;
-  const inTransit = shipments.filter((s) => (s as any).status === "In Transit").length;
-  const arrived = shipments.filter((s) => (s as any).status === "Arrived").length;
+  /** ----- metrics reflect FILTERED data now ----- */
+  const filteredRows = tableInstance.getFilteredRowModel().rows;
+  const filteredData: Row[] = filteredRows.map((r) => r.original as Row);
 
-  /** ----- example: top toolbar with Export ----- */
-  // Place this where you render your header/toolbar:
-  // <div className="flex items-center justify-between">
-  //   {/* your filters/search here */}
-  //   <ExportMenu
-  //     table={tableInstance}
-  //     fileNameBase="shipments"
-  //     warehouseMap={{ eta: "eta", description: "description", qty: "qty" }}
-  //   />
-  // </div>
+  const totalValue = filteredData.reduce(
+    (sum, s) => sum + (Number((s as any).declaredvalue) || 0),
+    0
+  );
+  const delayed = filteredData.filter((s) => (s as any).status === "Delayed").length;
+  const inTransit = filteredData.filter((s) => (s as any).status === "In Transit").length;
+  const arrived = filteredData.filter((s) => ["Delivered", "Arrived"].includes(String((s as any).status))).length;
 
-  // ...continue with your JSX below
-
-
+  function clearAllFilters() {
+    setGlobalFilter("");
+    setSelectedStatuses([]);
+    setEtaRange({});
+    setValueRange({});
+    setColumnFilters([]);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -427,12 +615,8 @@ export default function IncomingShipmentsPage() {
               </div>
             </div>
             <div className="flex space-x-2">
-              <ExportMenu
-                rows={shipments}                // 👈 your data
-                columnSpecs={columns}           // 👈 your dynamic columns [{ key, label }]
-                fileNameBase="shipments"
-                warehouseMap={{ eta: "eta", description: "description", qty: "qty" }}
-              />
+              {/* Export now uses the table instance to export FILTERED rows */}
+              <ExportMenu table={tableInstance} rows={shipments} columnSpecs={columns} fileNameBase="shipments" warehouseMap={{ eta: "eta", description: "description", qty: "qty" }} />
               <Button size="sm">Log Incoming</Button>
               <UserNav />
             </div>
@@ -442,23 +626,210 @@ export default function IncomingShipmentsPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
-          <Card><CardHeader><CardTitle className="text-sm">Total Incoming</CardTitle><Ship className="h-4 w-4" /></CardHeader><CardContent><div className="text-2xl font-bold">{shipments.length}</div></CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">In Transit</CardTitle><Clock className="h-4 w-4" /></CardHeader><CardContent><div className="text-2xl font-bold">{inTransit}</div></CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">Delayed</CardTitle><AlertTriangle className="h-4 w-4" /></CardHeader><CardContent><div className="text-2xl font-bold text-red-600">{delayed}</div></CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">Arrived</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{arrived}</div></CardContent></Card>
-          <Card><CardHeader><CardTitle className="text-sm">Total Value</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">S${totalValue.toLocaleString()}</div></CardContent></Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Total Incoming (filtered)</CardTitle>
+              <Ship className="h-4 w-4" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{filteredData.length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">In Transit</CardTitle>
+              <Clock className="h-4 w-4" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{inTransit}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Delayed</CardTitle>
+              <AlertTriangle className="h-4 w-4" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{delayed}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Arrived</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{arrived}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Total Value</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">S${totalValue.toLocaleString()}</div>
+            </CardContent>
+          </Card>
         </div>
 
         <Card className="mb-6">
-          <CardHeader><CardTitle>Search & Filter</CardTitle></CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4">
+          <CardHeader>
+            <CardTitle>Search & Filter</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-stretch">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Search by shipment ID, vendor, or tracking number..." className="pl-10" />
+                <Input
+                  placeholder="Search across all columns..."
+                  className="pl-10"
+                  value={globalFilter ?? ""}
+                  onChange={(e) => setGlobalFilter(e.target.value)}
+                />
               </div>
-              <Button variant="outline"><Filter className="h-4 w-4 mr-2" /> Filter</Button>
+              <Button variant={filtersOpen ? "default" : "outline"} onClick={() => setFiltersOpen((v) => !v)}>
+                <Filter className="h-4 w-4 mr-2" /> {filtersOpen ? "Hide Filters" : "Filters"}
+              </Button>
+              <Button variant="ghost" onClick={clearAllFilters} className="sm:w-auto w-full">
+                Reset
+              </Button>
             </div>
+
+            {filtersOpen && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border rounded-lg p-4 bg-muted/30">
+                {/* Status filter */}
+                {statusColId && (
+                  <div>
+                    <div className="text-sm font-medium mb-2">Status</div>
+                    <div className="flex flex-wrap gap-2">
+                      {statusOptions.map((s) => {
+                        const active = selectedStatuses.includes(s);
+                        return (
+                          <button
+                            key={s}
+                            onClick={() =>
+                              setSelectedStatuses((prev) =>
+                                prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+                              )
+                            }
+                            className={`px-2 py-1 rounded border text-sm ${active ? "bg-primary text-primary-foreground" : "bg-white"
+                              }`}
+                          >
+                            {s}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ETA range */}
+                {etaColId && (
+                  <div>
+                    <div className="text-sm font-medium mb-2">ETA range</div>
+                    <div className="flex gap-2">
+                      <Input
+                        type="date"
+                        value={etaRange.from ?? ""}
+                        onChange={(e) => setEtaRange((r) => ({ ...r, from: e.target.value }))}
+                      />
+                      <Input
+                        type="date"
+                        value={etaRange.to ?? ""}
+                        onChange={(e) => setEtaRange((r) => ({ ...r, to: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Value range */}
+                {valueColId && (
+                  <div>
+                    <div className="text-sm font-medium mb-2">Value (min / max)</div>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Min"
+                        value={valueRange.min ?? ""}
+                        onChange={(e) =>
+                          setValueRange((r) => ({ ...r, min: e.target.value ? Number(e.target.value) : undefined }))
+                        }
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Max"
+                        value={valueRange.max ?? ""}
+                        onChange={(e) =>
+                          setValueRange((r) => ({ ...r, max: e.target.value ? Number(e.target.value) : undefined }))
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+                {/* Vendor – chips multi-select */}
+                {vendorColId && (
+                  <div>
+                    <div className="text-sm font-medium mb-2">Vendor</div>
+                    <div className="flex flex-wrap gap-2">
+                      {vendorOptions.map((v) => {
+                        const active = selectedVendors.includes(v);
+                        return (
+                          <button
+                            key={v}
+                            onClick={() =>
+                              setSelectedVendors((prev) =>
+                                prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]
+                              )
+                            }
+                            className={`px-2 py-1 rounded border text-sm ${active ? "bg-primary text-primary-foreground" : "bg-white"
+                              }`}
+                          >
+                            {v}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Origin – checkbox list */}
+                {originColId && (
+                  <div>
+                    <div className="text-sm font-medium mb-2">Origin</div>
+                    <div className="flex flex-col gap-2 max-h-40 overflow-auto pr-1">
+                      {originOptions.map((o) => {
+                        const checked = selectedOrigins.includes(o);
+                        return (
+                          <label key={o} className="inline-flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) =>
+                                setSelectedOrigins((prev) =>
+                                  e.target.checked ? [...prev, o] : prev.filter((x) => x !== o)
+                                )
+                              }
+                            />
+                            {o}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tracking contains */}
+                {trackingColId && (
+                  <div>
+                    <div className="text-sm font-medium mb-2">Tracking contains</div>
+                    <Input
+                      placeholder="e.g. DHL / 1Z..."
+                      value={trackingContains}
+                      onChange={(e) => setTrackingContains(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -485,11 +856,11 @@ export default function IncomingShipmentsPage() {
           <Button onClick={handleAddColumn}>Add Column</Button>
         </div>
 
-
-
-
         <Card>
-          <CardHeader><CardTitle>All Incoming Shipments</CardTitle><CardDescription>Raw material shipments from overseas vendors</CardDescription></CardHeader>
+          <CardHeader>
+            <CardTitle>All Incoming Shipments</CardTitle>
+            <CardDescription>Raw material shipments from overseas vendors</CardDescription>
+          </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <UiTable>
@@ -518,10 +889,7 @@ export default function IncomingShipmentsPage() {
                               autoFocus
                             />
                           ) : (
-                            <span
-                              className="hover:underline w-full"
-                              onDoubleClick={() => handleEditColumn(col)}
-                            >
+                            <span className="hover:underline w-full" onDoubleClick={() => handleEditColumn(col)}>
                               {col.label}
                             </span>
                           )}
@@ -535,27 +903,23 @@ export default function IncomingShipmentsPage() {
                           </button>
                         </div>
                       </TableHead>
-
-
                     ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {shipments.map((shipment, i) => {
-                    const rk = getRowKey(shipment, i);
-
+                  {filteredRows.map((row) => {
+                    const rk = getRowKey(row.original as Row, row.index);
                     return (
                       <TableRow key={rk} className="hover:bg-gray-100 cursor-pointer">
                         {columns.map((col) => (
                           <TableCell key={`${rk}-${col.key}`} className={col.width}>
-                            {renderCellContent(shipment, col.key)}
+                            {renderCellContent(row.original as Row, col.key)}
                           </TableCell>
                         ))}
                       </TableRow>
                     );
                   })}
                 </TableBody>
-
               </UiTable>
             </div>
           </CardContent>
@@ -563,12 +927,11 @@ export default function IncomingShipmentsPage() {
       </main>
     </div>
   );
-
-
 }
+
+// (Optional) Keep your local default guesser
 function inferLocalDefaultValue(newColKey: string) {
-  // Guess a default value based on the column key
-  if (/date/i.test(newColKey)) return new Date().toISOString().slice(0, 10); // e.g. "2024-06-09"
+  if (/date/i.test(newColKey)) return new Date().toISOString().slice(0, 10);
   if (/status/i.test(newColKey)) return "Processing";
   if (/value|amount|price|cost/i.test(newColKey)) return 0;
   if (/name|vendor|supplier/i.test(newColKey)) return "";
@@ -576,5 +939,3 @@ function inferLocalDefaultValue(newColKey: string) {
   if (/tracking/i.test(newColKey)) return "";
   return "";
 }
-
-
