@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 import { MongoClient, Db } from 'mongodb';
 
 const uri = process.env.MONGODB_URI!;
-const DB_NAME = process.env.MONGODB_DB || 'test';      // <— defaults to "test"
+const DB_NAME = process.env.MONGODB_DB || 'test';
 const SHIP_COL = process.env.SHIPMENTS_COL || 'shipments';
 const INV_COL = process.env.INVENTORY_COL || 'inventories';
 
@@ -17,6 +17,19 @@ async function db(): Promise<Db> {
 
 type PeriodKey = '7d' | '30d' | '90d';
 const PERIOD_DAYS: Record<PeriodKey, number> = { '7d': 7, '30d': 30, '90d': 90 };
+
+// Helpers to build “coalesce + parse” date expressions
+const dateOrParse = (field: string) => ({
+    $cond: [
+        { $eq: [{ $type: `$${field}` }, 'date'] },
+        `$${field}`,
+        { $dateFromString: { dateString: `$${field}`, onError: null, onNull: null } },
+    ],
+});
+
+// $ifNull chain builder
+const coalesce = (...exprs: any[]) =>
+    exprs.reduceRight((acc, e) => ({ $ifNull: [e, acc] }), null);
 
 export async function GET(req: Request) {
     const url = new URL(req.url);
@@ -31,233 +44,320 @@ export async function GET(req: Request) {
     const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const soon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    // Normalise date fields that might be stored as strings
-    const addShipDates = {
+    // Normalize commonly-used shipment dates and status
+    const addShipDatesAndStatus = {
         $addFields: {
-            shipAt: {
-                $cond: [
-                    { $eq: [{ $type: '$shipDate' }, 'date'] },
-                    '$shipDate',
-                    { $dateFromString: { dateString: '$shipDate', onError: null, onNull: null } }
-                ]
+            shipAt: coalesce(
+                dateOrParse('shippingDate'),
+                dateOrParse('shipDate'),
+                dateOrParse('createdAt')
+            ),
+            estAt: coalesce(
+                dateOrParse('estimatedDelivery'),
+                dateOrParse('newEta'),
+                dateOrParse('eta'),
+                dateOrParse('expectedArrival')
+            ),
+            delivAt: coalesce(
+                dateOrParse('deliveredDate'),
+                dateOrParse('deliveryDate')
+            ),
+            // statusNorm: lower+trim for consistent matching
+            statusNorm: {
+                $trim: { input: { $toLower: { $ifNull: ['$status', ''] } } },
             },
-            estAt: {
-                $cond: [
-                    { $eq: [{ $type: '$estimatedDelivery' }, 'date'] },
-                    '$estimatedDelivery',
-                    { $dateFromString: { dateString: '$estimatedDelivery', onError: null, onNull: null } }
-                ]
-            },
-            delivAt: {
-                $cond: [
-                    { $eq: [{ $type: '$deliveredDate' }, 'date'] },
-                    '$deliveredDate',
-                    { $dateFromString: { dateString: '$deliveredDate', onError: null, onNull: null } }
-                ]
-            }
-        }
+            valueNorm: { $ifNull: ['$valueSGD', { $ifNull: ['$declaredValue', { $ifNull: ['$price', 0] }] }] },
+        },
     };
 
-    // ---- Shipment summary (arrived / in-transit / delayed + total value)
-    const shipmentAgg = await shipments.aggregate([
-        addShipDates,
-        { $match: { shipAt: { $gte: from } } },
-        {
-            $group: {
-                _id: '$status',
-                count: { $sum: 1 },
-                totalValue: { $sum: { $ifNull: ['$valueSGD', 0] } }
-            }
-        }
-    ]).toArray();
-
-    const by = (status: string) => shipmentAgg.find(x => x._id === status)?.count ?? 0;
-    const shipmentSummary = {
-        total: shipmentAgg.reduce((a, b) => a + (b.count ?? 0), 0),
-        inTransit: by('In Transit'),
-        delayed: by('Delayed'),
-        arrived: by('Delivered'),
-        totalValue: shipmentAgg.reduce((a, b) => a + (b.totalValue ?? 0), 0)
+    // Unified activity date for filtering & trends: prefer shipAt, then estAt, then delivAt
+    const addActiveAt = {
+        $addFields: {
+            activeAt: coalesce('$shipAt', '$estAt', '$delivAt'),
+        },
     };
+
+    // ---- Shipment summary (total / in-transit / delayed / arrived + total value)
+    const summaryAgg = await shipments
+        .aggregate([
+            addShipDatesAndStatus,
+            addActiveAt,
+            {
+                $match: {
+                    $or: [
+                        { shipAt: { $gte: from } },
+                        { estAt: { $gte: from } },
+                        { delivAt: { $gte: from } },
+                        // as a fallback, also accept unified date if present
+                        { activeAt: { $gte: from } },
+                    ],
+                },
+            },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: 1 },
+                    inTransit: {
+                        $sum: {
+                            $cond: [{ $in: ['$statusNorm', ['in transit', 'transit']] }, 1, 0],
+                        },
+                    },
+                    delayed: {
+                        $sum: {
+                            $cond: [
+                                { $or: [{ $eq: ['$statusNorm', 'delayed'] }, { $gt: ['$delayDays', 0] }] },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+                    arrived: {
+                        $sum: {
+                            $cond: [{ $in: ['$statusNorm', ['arrived', 'delivered']] }, 1, 0],
+                        },
+                    },
+                    totalValue: { $sum: '$valueNorm' },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    total: 1,
+                    inTransit: 1,
+                    delayed: 1,
+                    arrived: 1,
+                    totalValue: 1,
+                },
+            },
+        ])
+        .toArray();
+
+    const shipmentSummary =
+        summaryAgg[0] ?? { total: 0, inTransit: 0, delayed: 0, arrived: 0, totalValue: 0 };
 
     // ---- Inventory summary (low stock / expiring / expired / value)
     const inventoryItems = await inventory.find({}).toArray();
-    
-    // Calculate inventory metrics using the same logic as inventory page
-    const getDaysUntilExpiry = (expiryDate: string) => {
-        const today = new Date()
-        const expiry = new Date(expiryDate)
-        const diffTime = expiry.getTime() - today.getTime()
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-        return diffDays
-    }
 
-    let lowStock = 0, expiringSoon = 0, expired = 0, totalValue = 0;
+    const getDaysUntilExpiry = (expiryDate: string) => {
+        const today = new Date();
+        const expiry = new Date(expiryDate);
+        const diffTime = expiry.getTime() - today.getTime();
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    };
+
+    let lowStock = 0,
+        expiringSoon = 0,
+        expired = 0,
+        totalValue = 0;
 
     for (const item of inventoryItems) {
-        // Calculate stock percentage and days to expiry
-        const stockPercentage = (item.quantity / item.maxStock) * 100
-        const daysToExpiry = getDaysUntilExpiry(item.expiryDate)
-        
-        // Count items by status (same logic as inventory page)
-        if (daysToExpiry < 0) {
-            expired++
-        } else if (daysToExpiry < 30 && daysToExpiry >= 0) {
-            expiringSoon++
-        } else if (stockPercentage < 20) {
-            lowStock++
-        }
-        
-        // Calculate total value
-        totalValue += (item.quantity * item.costPerUnit)
+        const stockPercentage =
+            item.maxStock > 0 ? (item.quantity / item.maxStock) * 100 : 0;
+        const daysToExpiry = item.expiryDate ? getDaysUntilExpiry(item.expiryDate) : 999999;
+
+        if (daysToExpiry < 0) expired++;
+        else if (daysToExpiry < 30) expiringSoon++;
+        else if (stockPercentage < 20) lowStock++;
+
+        totalValue += (Number(item.quantity) || 0) * (Number(item.costPerUnit) || 0);
     }
 
     const inventorySummary = {
         totalItems: inventoryItems.length,
         lowStock,
-        expiringSoon, 
+        expiringSoon,
         expired,
-        totalValue
+        totalValue,
     };
 
     // ---- Inventory value distribution (by category)
-    const inventoryValueDist = await inventory.aggregate([
-        {
-            $addFields: {
-                value: { $multiply: [{ $ifNull: ['$quantity', 0] }, { $ifNull: ['$costPerUnit', 0] }] }
-            }
-        },
-        { $group: { _id: '$category', value: { $sum: '$value' } } },
-        { $project: { _id: 0, name: '$_id', value: 1 } },
-        { $sort: { value: -1 } },
-        { $limit: 12 }
-    ]).toArray();
+    const inventoryValueDist = await inventory
+        .aggregate([
+            {
+                $addFields: {
+                    value: {
+                        $multiply: [
+                            { $ifNull: ['$quantity', 0] },
+                            { $ifNull: ['$costPerUnit', 0] },
+                        ],
+                    },
+                },
+            },
+            { $group: { _id: '$category', value: { $sum: '$value' } } },
+            { $project: { _id: 0, name: '$_id', value: 1 } },
+            { $sort: { value: -1 } },
+            { $limit: 12 },
+        ])
+        .toArray();
 
-    // ---- Shipment trends (week bucket)
-    const shipmentTrends = await shipments.aggregate([
-        addShipDates,
-        { $match: { shipAt: { $gte: from } } },
-        {
-            $addFields: {
-                weekStart: { $dateTrunc: { date: '$shipAt', unit: 'week', timezone: 'UTC' } },
-                isIncoming: { $eq: ['$Type', 'Incoming'] },
-                isInternal: { $eq: ['$Type', 'Internal'] },
-                isDelayed: { $or: [{ $eq: ['$status', 'Delayed'] }, { $gt: ['$delayDays', 0] }] }
-            }
-        },
-        {
-            $group: {
-                _id: '$weekStart',
-                incoming: { $sum: { $cond: ['$isIncoming', 1, 0] } },
-                outgoing: { $sum: { $cond: ['$isOutgoing', 1, 0] } },
-                delayed: { $sum: { $cond: ['$isDelayed', 1, 0] } }
-            }
-        },
-        {
-            $project: {
-                _id: 0,
-                week: { $dateToString: { date: '$_id', format: '%Y-%m-%d' } },
-                incoming: 1, outgoing: 1, delayed: 1
-            }
-        },
-        { $sort: { week: 1 } }
-    ]).toArray();
+    // ---- Shipment trends (weekly, by status buckets)
+    const shipmentTrends = await shipments
+        .aggregate([
+            addShipDatesAndStatus,
+            addActiveAt,
+            { $match: { activeAt: { $gte: from } } },
+            {
+                $addFields: {
+                    weekStart: {
+                        $dateTrunc: { date: '$activeAt', unit: 'week', timezone: 'UTC' },
+                    },
+                },
+            },
+            {
+                $group: {
+                    _id: '$weekStart',
+                    inTransit: {
+                        $sum: {
+                            $cond: [{ $in: ['$statusNorm', ['in transit', 'transit']] }, 1, 0],
+                        },
+                    },
+                    arrived: {
+                        $sum: {
+                            $cond: [{ $in: ['$statusNorm', ['arrived', 'delivered']] }, 1, 0],
+                        },
+                    },
+                    delayed: {
+                        $sum: {
+                            $cond: [
+                                { $or: [{ $eq: ['$statusNorm', 'delayed'] }, { $gt: ['$delayDays', 0] }] },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    week: { $dateToString: { date: '$_id', format: '%Y-%m-%d' } },
+                    inTransit: 1,
+                    arrived: 1,
+                    delayed: 1,
+                },
+            },
+            { $sort: { week: 1 } },
+        ])
+        .toArray();
 
-    // ---- Daily operations (by day-of-week)
-    const dowAgg = await shipments.aggregate([
-        addShipDates,
-        { $match: { shipAt: { $gte: from } } },
-        { $group: { _id: { $dayOfWeek: '$shipAt' }, shipments: { $sum: 1 } } }
-    ]).toArray();
+    // ---- Daily operations (by day-of-week) – use activeAt
+    const dowAgg = await shipments
+        .aggregate([
+            addShipDatesAndStatus,
+            addActiveAt,
+            { $match: { activeAt: { $gte: from } } },
+            { $group: { _id: { $dayOfWeek: '$activeAt' }, shipments: { $sum: 1 } } },
+        ])
+        .toArray();
+
     const dowName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const map = new Map<number, number>();
     for (const r of dowAgg) map.set(r._id, r.shipments);
-    const dailyOps = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(name => {
-        const idx = dowName.indexOf(name) + 1; // 1=Sun..7=Sat
-        return { day: name, shipments: map.get(idx) ?? 0, inventory: Math.round((inventorySummary.lowStock + inventorySummary.expiringSoon) / 7) };
-    });
-
-    // ---- Recent shipments (latest 12)
-    const recentDocs = await shipments.aggregate([
-        addShipDates,
-        { $sort: { shipAt: -1 } },
-        { $limit: 12 },
-        {
-            $project: {
-                _id: 0,
-                id: { $ifNull: ['$shipmentId', '$trackingNumber'] },
-                vendor: { $ifNull: ['$vendor', 'Unknown'] },
-                status: { $ifNull: ['$status', 'In Transit'] },
-                expectedArrival: { $ifNull: ['$estAt', '$expectedArrival'] },
-                value: { $ifNull: ['$valueSGD', '$declaredValue'] },
-                delay: { $ifNull: ['$delayDays', 0] }
-            }
+    const dailyOps = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(
+        (name) => {
+            const idx = dowName.indexOf(name) + 1; // 1=Sun..7=Sat
+            return {
+                day: name,
+                shipments: map.get(idx) ?? 0,
+                inventory: Math.round((inventorySummary.lowStock + inventorySummary.expiringSoon) / 7),
+            };
         }
-    ]).toArray();
+    );
 
-    // ---- Critical inventory (top 12)
-    const criticalInventory = await inventory.aggregate([
-        {
-            $addFields: {
-                expiryAt: {
-                    $cond: [
-                        { $eq: [{ $type: '$expiryDate' }, 'date'] },
-                        '$expiryDate',
-                        { $dateFromString: { dateString: '$expiryDate', onError: null, onNull: null } }
-                    ]
+    // ---- Recent shipments (latest 12) – normalize status to UI's union
+    const recentDocs = await shipments
+        .aggregate([
+            addShipDatesAndStatus,
+            {
+                $addFields: {
+                    statusUi: {
+                        $switch: {
+                            branches: [
+                                { case: { $in: ['$statusNorm', ['arrived', 'delivered']] }, then: 'Arrived' },
+                                { case: { $eq: ['$statusNorm', 'delayed'] }, then: 'Delayed' },
+                                { case: { $in: ['$statusNorm', ['in transit', 'transit']] }, then: 'In Transit' },
+                            ],
+                            default: 'In Transit',
+                        },
+                    },
                 },
-                stockPercentage: { 
-                    $cond: [
-                        { $gt: ['$maxStock', 0] },
-                        { $multiply: [{ $divide: ['$quantity', '$maxStock'] }, 100] },
-                        0
-                    ]
-                }
-            }
-        },
-        {
-            $addFields: {
-                daysToExpiry: {
-                    $cond: [
-                        { $ne: ['$expiryAt', null] },
-                        { $divide: [{ $subtract: ['$expiryAt', now] }, 86400000] }, // Convert to days
-                        999999 // Large number for items without expiry
-                    ]
-                }
-            }
-        },
-        {
-            $match: {
-                $or: [
-                    { daysToExpiry: { $lt: 30 } }, // Expiring within 30 days or expired
-                    { stockPercentage: { $lt: 20 } } // Low stock (< 20%)
-                ]
-            }
-        },
-        {
-            $project: {
-                _id: 0,
-                id: { $ifNull: ['$id', ''] },
-                item: '$item',
-                quantity: 1,
-                unit: '$unit',
-                expiryDate: '$expiryDate',
-                status: {
-                    $cond: [
-                        { $lt: ['$daysToExpiry', 0] }, 'Expired',
-                        {
-                            $cond: [
-                                { $and: [{ $gte: ['$daysToExpiry', 0] }, { $lt: ['$daysToExpiry', 30] }] },
-                                'Expiring Soon',
-                                { $cond: [{ $lt: ['$stockPercentage', 20] }, 'Low Stock', 'Normal'] }
-                            ]
-                        }
-                    ]
-                }
-            }
-        },
-        { $limit: 12 }
-    ]).toArray();
+            },
+            { $sort: { shipAt: -1, estAt: -1, delivAt: -1, _id: -1 } },
+            { $limit: 12 },
+            {
+                $project: {
+                    _id: 0,
+                    id: { $ifNull: ['$shipmentId', { $ifNull: ['$trackingNumber', ''] }] },
+                    vendor: { $ifNull: ['$vendor', 'Unknown'] },
+                    status: '$statusUi',
+                    expectedArrival: { $ifNull: ['$estAt', '$expectedArrival'] },
+                    value: '$valueNorm',
+                    delay: { $ifNull: ['$delayDays', 0] },
+                },
+            },
+        ])
+        .toArray();
+
+    // ---- Critical inventory (top 12) – unchanged except for safety tweaks
+    const criticalInventory = await inventory
+        .aggregate([
+            {
+                $addFields: {
+                    expiryAt: coalesce(
+                        dateOrParse('expiryDate'),
+                        dateOrParse('expirationDate')
+                    ),
+                    stockPercentage: {
+                        $cond: [
+                            { $gt: ['$maxStock', 0] },
+                            { $multiply: [{ $divide: ['$quantity', '$maxStock'] }, 100] },
+                            0,
+                        ],
+                    },
+                },
+            },
+            {
+                $addFields: {
+                    daysToExpiry: {
+                        $cond: [
+                            { $ne: ['$expiryAt', null] },
+                            { $divide: [{ $subtract: ['$expiryAt', now] }, 86400000] },
+                            999999,
+                        ],
+                    },
+                },
+            },
+            {
+                $match: {
+                    $or: [{ daysToExpiry: { $lt: 30 } }, { stockPercentage: { $lt: 20 } }],
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    id: { $ifNull: ['$id', ''] },
+                    item: '$item',
+                    quantity: 1,
+                    unit: 1,
+                    expiryDate: '$expiryDate',
+                    status: {
+                        $cond: [
+                            { $lt: ['$daysToExpiry', 0] },
+                            'Expired',
+                            {
+                                $cond: [
+                                    { $and: [{ $gte: ['$daysToExpiry', 0] }, { $lt: ['$daysToExpiry', 30] }] },
+                                    'Expiring Soon',
+                                    { $cond: [{ $lt: ['$stockPercentage', 20] }, 'Low Stock', 'Normal'] },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+            { $limit: 12 },
+        ])
+        .toArray();
 
     return NextResponse.json({
         shipmentSummary,
@@ -266,6 +366,6 @@ export async function GET(req: Request) {
         inventoryValueDist,
         dailyOps,
         recentShipments: recentDocs,
-        criticalInventory
+        criticalInventory,
     });
 }

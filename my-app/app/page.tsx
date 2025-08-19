@@ -1,29 +1,26 @@
 'use client'
 
 // app/(dashboard)/page.tsx — Revamped client dashboard
-// Shipment summary & trends are now derived from shipments data (recentShipments).
-// Inventory-related code is untouched. Data still comes from /api/dashboard and /api/explore (no client DB).
+// Shipment summary & trends are derived from shipments data (recentShipments).
+// Inventory-related code is untouched. Data still comes from /api/dashboard and /api/explore.
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { Navbar } from '@/components/navbar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Ship, Package, AlertTriangle, Clock, TrendingDown, MessageCircle, Loader2, CheckCircle2, Info } from 'lucide-react'
+import { Ship, Package, AlertTriangle, Clock, TrendingDown, MessageCircle, Loader2, Info } from 'lucide-react'
 import { ChatBot } from '@/components/chatbot'
 
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
+  ResponsiveContainer,
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
+  XAxis,
+  YAxis,
   BarChart,
   Bar,
   PieChart,
@@ -44,8 +41,6 @@ type CriticalInventory = { id: string; item: string; quantity: number; unit: str
 
 // NOTE: shipmentSummary and shipmentTrends removed from API shape; we derive them from recentShipments.
 type DashboardData = {
-  // shipmentSummary: ShipmentSummary                               // ← removed (derived)
-  // shipmentTrends: ShipmentTrendPoint[]                           // ← removed (derived)
   inventorySummary: InventorySummary
   inventoryValueDist: InventoryValueSlice[]
   dailyOps: DailyOpsPoint[]
@@ -53,7 +48,7 @@ type DashboardData = {
   criticalInventory: CriticalInventory[]
 }
 
-const COLORS = ["#1e40af", "#059669", "#d97706", "#dc2626", "#64748b"]
+const COLORS = ['#1e40af', '#059669', '#d97706', '#dc2626', '#64748b']
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
@@ -110,7 +105,6 @@ export default function DashboardPage() {
     const map = new Map<string, { ts: number; inTransit: number; arrived: number; delayed: number }>()
     for (const s of recentShipmentsArr) {
       const key = weekKeyFromISO(s.expectedArrival)
-      // Skip if date invalid
       if (!key) continue
       const row = map.get(key) || { ts: new Date(key).getTime(), inTransit: 0, arrived: 0, delayed: 0 }
       if (s.status === 'In Transit') row.inTransit++
@@ -118,14 +112,12 @@ export default function DashboardPage() {
       if (s.status === 'Delayed' || (s.delay || 0) > 0) row.delayed++
       map.set(key, row)
     }
-    // Sort by week ascending
-    const rows = Array.from(map.entries())
+    return Array.from(map.entries())
       .sort((a, b) => a[1].ts - b[1].ts)
       .map(([week, v]) => ({ week: formatWeekLabel(week), inTransit: v.inTransit, arrived: v.arrived, delayed: v.delayed }))
-    return rows
   }, [recentShipmentsArr])
 
-  // Additional KPIs derived from shipments (unchanged logic, but computed from same source)
+  // Additional KPIs derived from shipments
   const { recentOnTimeRate, avgDelayDays } = useMemo(() => {
     const arrived = recentShipmentsArr.filter(s => s.status === 'Arrived')
     const onTime = arrived.filter(s => (s.delay || 0) <= 0).length
@@ -138,11 +130,12 @@ export default function DashboardPage() {
   const vendorRows = useMemo(() => {
     const map = new Map<string, { vendor: string; total: number; delayed: number; declaredvalue: number }>()
     for (const s of recentShipmentsArr) {
-      const row = map.get(s.vendor) || { vendor: s.vendor || 'Unknown', total: 0, delayed: 0, declaredvalue: 0 }
+      const key = s.vendor || 'Unknown'
+      const row = map.get(key) || { vendor: key, total: 0, delayed: 0, declaredvalue: 0 }
       row.total += 1
       row.delayed += (s.status === 'Delayed' || (s.delay || 0) > 0) ? 1 : 0
-      row.declaredvalue = s.value || row.declaredvalue
-      map.set(s.vendor, row)
+      row.declaredvalue += Number(s.value || 0)
+      map.set(key, row)
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 5)
   }, [recentShipmentsArr])
@@ -174,7 +167,7 @@ export default function DashboardPage() {
   if (!data) return null
 
   // Pull only inventory data & supporting fields from API; shipments are already in recentShipments
-  const { inventorySummary, inventoryValueDist, dailyOps, recentShipments, criticalInventory } = data
+  const { inventorySummary, inventoryValueDist, dailyOps } = data
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -187,7 +180,8 @@ export default function DashboardPage() {
             <h1 className="text-xl font-semibold text-slate-900">Operations Dashboard</h1>
             <p className="text-sm text-slate-600">Real-time view of shipments and inventory health</p>
           </div>
-          {/* <div className="flex items-center gap-2">
+          {/* Period control (optional)
+          <div className="flex items-center gap-2">
             <label className="text-sm text-slate-600">Period</label>
             <select className="border rounded px-2 py-1" value={period} onChange={(e) => setPeriod(e.target.value as any)}>
               <option value="7d">Last 7 days</option>
@@ -199,8 +193,12 @@ export default function DashboardPage() {
 
         {/* KPI Tiles */}
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-
-          <KpiTile label="Active Shipments" value={((shipmentSummary.inTransit)+(shipmentSummary.delayed)).toString()} icon={<Ship className="h-4 w-4 text-blue-700" />} hint={`${shipmentSummary.delayed} delayed`} />
+          <KpiTile
+            label="Active Shipments"
+            value={shipmentSummary.total.toString()}
+            hint={`${shipmentSummary.delayed} delayed`}
+            icon={<Ship className="h-4 w-4 text-blue-700" />}
+          />
           {/* Inventory KPIs left untouched */}
           <KpiTile label="Low Stock" value={inventorySummary.lowStock.toString()} icon={<TrendingDown className="h-4 w-4 text-gray-600" />} />
           <KpiTile label="Expiring Soon" value={inventorySummary.expiringSoon.toString()} icon={<AlertTriangle className="h-4 w-4 text-red-600" />} />
@@ -239,7 +237,7 @@ export default function DashboardPage() {
                     {alerts.delayedShipments.length === 0 && <p className="text-sm text-slate-500">No delays detected in recent shipments.</p>}
                     {alerts.delayedShipments.map((s) => (
                       <div key={s.id} className="flex items-center justify-between p-3 border rounded bg-white">
-                        <div className="text-sm"><span className="font-medium">{s.id}</span> • {s.vendor}</div>
+                        <div className="text-sm"><span className="font-medium">{s.id}</span> • {s.vendor || 'Unknown'}</div>
                         <div className="text-sm text-red-600">{Math.max(0, s.delay)} days delayed</div>
                       </div>
                     ))}
@@ -327,9 +325,9 @@ export default function DashboardPage() {
                   <CardDescription className="text-slate-600">Stock levels and expiry status</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <BarRow label="Normal Stock" value={inventorySummary.totalItems - inventorySummary.lowStock} total={inventorySummary.totalItems} />
-                  <BarRow label="Low Stock" value={inventorySummary.lowStock} total={inventorySummary.totalItems} />
-                  <BarRow label="Expiring Soon" value={inventorySummary.expiringSoon} total={inventorySummary.totalItems} />
+                  <BarRow label="Normal Stock" value={Math.max(0, (inventorySummary.totalItems || 0) - (inventorySummary.lowStock || 0))} total={inventorySummary.totalItems || 0} />
+                  <BarRow label="Low Stock" value={inventorySummary.lowStock || 0} total={inventorySummary.totalItems || 0} />
+                  <BarRow label="Expiring Soon" value={inventorySummary.expiringSoon || 0} total={inventorySummary.totalItems || 0} />
                 </CardContent>
               </Card>
             </div>
@@ -375,18 +373,10 @@ function BarRow({ label, value, total }: { label: string; value: number; total: 
   )
 }
 
-function badgeClassForShipment(status: RecentShipment['status']) {
-  if (status === 'Delayed') return 'bg-red-600 text-white'
-  if (status === 'Arrived') return 'bg-emerald-600 text-white'
-  return 'bg-blue-700 text-white'
-}
 function badgeClassForInventory(status: CriticalInventory['status']) {
   if (status === 'Expired') return 'bg-red-600 text-white'
   if (status === 'Expiring Soon') return 'bg-amber-600 text-white'
   return 'bg-gray-500 text-white'
-}
-function toDate(iso?: string) {
-  try { return iso ? new Date(iso).toLocaleDateString() : '' } catch { return iso ?? '' }
 }
 
 // Format week key "YYYY-MM-DD" → "MMM d" label (start-of-week)
@@ -415,10 +405,18 @@ function weekKeyFromISO(iso?: string): string {
   return `${yyyy}-${mm}-${dd}`
 }
 
-function AnalyticsCharts({ shipmentTrends, inventoryValueDist, dailyOps }: { shipmentTrends: ShipmentTrendPoint[]; inventoryValueDist: InventoryValueSlice[]; dailyOps: DailyOpsPoint[] }) {
+function AnalyticsCharts({
+  shipmentTrends: _shipmentTrends,
+  inventoryValueDist = [],
+  dailyOps: _dailyOps = [],
+}: {
+  shipmentTrends: ShipmentTrendPoint[]
+  inventoryValueDist: InventoryValueSlice[]
+  dailyOps: DailyOpsPoint[]
+}) {
   return (
     <>
-      {/* Inventory value distribution (untouched) */}
+      {/* Inventory value distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
         <Card className="border-slate-200 shadow-sm">
           <CardHeader>
@@ -431,23 +429,22 @@ function AnalyticsCharts({ shipmentTrends, inventoryValueDist, dailyOps }: { shi
                 <Pie data={inventoryValueDist} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
                   {inventoryValueDist.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
-                <Tooltip formatter={(v: number) => [`S$${v.toLocaleString()}`, 'Value']} />
+                <Tooltip formatter={(v: number) => [`S$${Number(v ?? 0).toLocaleString()}`, 'Value']} />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
-
-      {/* Daily operations (untouched) */}
-      {/* <Card className="border-slate-200 shadow-sm">
+      {/* Daily operations (optional chart retained for future use)
+      <Card className="border-slate-200 shadow-sm">
         <CardHeader>
           <CardTitle className="text-slate-900">Daily Operations Overview</CardTitle>
           <CardDescription className="text-slate-600">Weekly activity across shipments and inventory</CardDescription>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={dailyOps}>
+            <LineChart data={_dailyOps}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="day" />
               <YAxis />
@@ -510,7 +507,11 @@ function ExplorePanel() {
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-3 items-center">
           <label className="text-sm">Dataset</label>
-          <select className="border rounded px-2 py-1" value={dataset} onChange={(e) => { setDataset(e.target.value as any); setGroupBy('status'); setMeasure({ op: 'count' }); setRows([]); }}>
+          <select
+            className="border rounded px-2 py-1"
+            value={dataset}
+            onChange={(e) => { setDataset(e.target.value as any); setGroupBy('status'); setMeasure({ op: 'count' }); setRows([]); }}
+          >
             <option value="shipments">Shipments</option>
             <option value="inventory">Inventory</option>
           </select>
@@ -522,7 +523,14 @@ function ExplorePanel() {
             <div className="text-xs font-semibold mb-2">Dimensions</div>
             <div className="flex flex-wrap gap-2">
               {dims.map((d) => (
-                <span key={d} draggable onDragStart={(e) => onDragStart(e, `dim:${d}`)} className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs cursor-grab">{d}</span>
+                <span
+                  key={d}
+                  draggable
+                  onDragStart={(e) => onDragStart(e, `dim:${d}`)}
+                  className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs cursor-grab"
+                >
+                  {d}
+                </span>
               ))}
             </div>
           </div>
@@ -530,7 +538,14 @@ function ExplorePanel() {
             <div className="text-xs font-semibold mb-2">Measures</div>
             <div className="flex flex-wrap gap-2">
               {meas.map((m) => (
-                <span key={m} draggable onDragStart={(e) => onDragStart(e, `mea:${m}`)} className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs cursor-grab">{m}</span>
+                <span
+                  key={m}
+                  draggable
+                  onDragStart={(e) => onDragStart(e, `mea:${m}`)}
+                  className="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs cursor-grab"
+                >
+                  {m}
+                </span>
               ))}
             </div>
           </div>
