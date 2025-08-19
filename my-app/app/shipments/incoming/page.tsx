@@ -80,20 +80,48 @@ export default function IncomingShipmentsPage() {
   const [newColumn, setNewColumn] = useState("");
   const [newColumnType, setNewColumnType] = useState("string");
 
-  // fetch + infer columns, then (optionally) normalize labels via your API
   useEffect(() => {
     const loadShipments = async () => {
       const res = await fetch("/api/shipments");
       const data: Row[] = await res.json();
-      if (!data.length) return;
+      if (!data.length) {
+        setShipments([]);
+        setColumns([]);
+        return;
+      }
 
-      const allKeys = Array.from(new Set(data.flatMap(Object.keys)));
+      // find candidate keys that represent "type" (e.g., "type", "Type", "shipmentType")
+      const rawKeys = Array.from(new Set(data.flatMap(Object.keys)));
+      const typeKeys = rawKeys.filter(k => /type/i.test(k));
 
-      // optional server-side alias map (label -> raw key(s))
+      // helper to read the first available type-like value from a row
+      const getTypeVal = (row: Row) => {
+        for (const k of typeKeys) {
+          const v = row[k as keyof Row];
+          if (v != null) return String(v);
+        }
+        // explicit fallbacks if no regex match was found
+        return (row as any).type ?? (row as any).Type ?? undefined;
+      };
+
+      // keep only "Incoming" (case-insensitive)
+      const filtered = data.filter(r => getTypeVal(r)?.toLowerCase() === "incoming");
+
+      // if nothing matches, show empty table (and skip column inference)
+      if (!filtered.length) {
+        setShipments([]);
+        setColumns([]);
+        return;
+      }
+
+      // infer columns from the filtered dataset only
+      const filteredKeys = Array.from(new Set(filtered.flatMap(Object.keys)));
+
+      // optional server-side alias map (label -> raw key(s)), using filtered keys
       const aliasRes = await fetch("/api/normalize-columns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columns: allKeys }),
+        body: JSON.stringify({ columns: filteredKeys }),
       });
 
       // expected shape: { "ETA": "eta", "Description": ["desc","description"], ... }
@@ -101,16 +129,17 @@ export default function IncomingShipmentsPage() {
 
       const inferredColumns: ColumnSpec[] = Object.entries(aliasMap).map(([label, raw]) => ({
         key: Array.isArray(raw) ? raw.join("|") : raw, // composite key to support merging values
-        label,
+        label,  
         width: "min-w-[200px]",
       }));
 
       setColumns(inferredColumns);
-      setShipments(data);
+      setShipments(filtered);
     };
 
     loadShipments();
   }, []);
+
 
   /** ----- column defs for TanStack (built from your ColumnSpec) ----- */
   const columnDefs = React.useMemo<ColumnDef<Row>[]>(() => {
@@ -398,12 +427,12 @@ export default function IncomingShipmentsPage() {
               </div>
             </div>
             <div className="flex space-x-2">
-                <ExportMenu
-                  rows={shipments}                // 👈 your data
-                  columnSpecs={columns}           // 👈 your dynamic columns [{ key, label }]
-                  fileNameBase="shipments"
-                  warehouseMap={{ eta: "eta", description: "description", qty: "qty" }}
-                />
+              <ExportMenu
+                rows={shipments}                // 👈 your data
+                columnSpecs={columns}           // 👈 your dynamic columns [{ key, label }]
+                fileNameBase="shipments"
+                warehouseMap={{ eta: "eta", description: "description", qty: "qty" }}
+              />
               <Button size="sm">Log Incoming</Button>
               <UserNav />
             </div>
