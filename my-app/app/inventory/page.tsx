@@ -181,6 +181,168 @@ const getDaysUntilExpiry = (expiryDate: string) => {
   return diffDays
 }
 
+// Function to check and process delivered shipments for inventory integration
+const processDeliveredShipments = async () => {
+  try {
+    console.log("🔄 Checking for delivered shipments to add to inventory...")
+    
+    // Fetch all shipments with detailed logging
+    console.log("📡 Fetching shipments from /api/shipments...")
+    const shipmentsResponse = await fetch('/api/shipments')
+    console.log("📡 Shipments response status:", shipmentsResponse.status)
+    
+    if (!shipmentsResponse.ok) {
+      const errorText = await shipmentsResponse.text()
+      console.error("❌ Shipments fetch failed:", errorText)
+      throw new Error(`Failed to fetch shipments: ${shipmentsResponse.status} ${errorText}`)
+    }
+    
+    const allShipments = await shipmentsResponse.json()
+    console.log("📦 Total shipments fetched:", allShipments.length)
+    console.log("📦 Sample shipment structure:", allShipments[0] || "No shipments found")
+    
+    // Filter for delivered incoming shipments that haven't been processed
+    const deliveredShipments = allShipments.filter((shipment: any) => {
+      const status = shipment.status || shipment.Status
+      const type = shipment.type || shipment.Type
+      const processed = shipment.processedToInventory || shipment.processed_to_inventory
+      
+      console.log(`🔍 Shipment ${shipment._id}: status=${status}, type=${type}, processed=${processed}`)
+      
+      return (
+        status?.toLowerCase() === 'delivered' &&
+        type?.toLowerCase() === 'incoming' &&
+        !processed // Only unprocessed shipments
+      )
+    })
+    
+    console.log(`📋 Filtered delivered shipments: ${deliveredShipments.length}`)
+    
+    if (deliveredShipments.length === 0) {
+      console.log("✅ No new delivered shipments to process")
+      return { processed: 0, skipped: 0 }
+    }
+    
+    console.log(`📦 Found ${deliveredShipments.length} delivered shipments to process`)
+    console.log("📦 First delivered shipment:", deliveredShipments[0])
+    
+    let processed = 0
+    let skipped = 0
+    
+    for (const shipment of deliveredShipments) {
+      try {
+        console.log(`🔄 Processing shipment:`, shipment._id)
+        
+        // Extract relevant data from shipment
+        const description = shipment.description || shipment.Description || 'Unknown Material'
+        const quantity = parseFloat(shipment.qty || shipment.quantity || shipment.Quantity || '0')
+        const vendor = shipment.vendor || shipment.Vendor || shipment.supplier || 'Unknown Supplier'
+        const weight = parseFloat(shipment.weight || shipment.Weight || '0')
+        const trackingNumber = shipment.trackingNumber || shipment.tracking || shipment.Tracking
+        
+        console.log(`📊 Extracted data: desc=${description}, qty=${quantity}, vendor=${vendor}, tracking=${trackingNumber}`)
+        
+        // Skip if essential data is missing
+        if (!description || description === 'Unknown Material' || quantity <= 0) {
+          console.log(`⚠️ Skipping shipment ${trackingNumber}: Missing essential data (desc="${description}", qty=${quantity})`)
+          skipped++
+          continue
+        }
+        
+        // Create inventory item from shipment data
+        const inventoryItem = {
+          id: `SHP-${trackingNumber || Date.now()}`,
+          item: description,
+          category: 'Imported', // Default category for shipments
+          quantity: quantity,
+          unit: 'm³', // Default unit
+          minStock: Math.floor(quantity * 0.2), // 20% of received quantity
+          maxStock: Math.floor(quantity * 3), // 3x received quantity
+          location: 'Singapore Warehouse', // Default to Singapore warehouse
+          receivedDate: shipment.eta || shipment.ETA || new Date().toISOString().split('T')[0],
+          expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1 year from now
+          supplier: vendor,
+          costPerUnit: 500, // Default cost per unit
+          status: 'Good'
+        }
+        
+        console.log(`📦 Creating inventory item:`, inventoryItem)
+        
+        // Add to inventory via API
+        const addResponse = await fetch('/api/inventory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(inventoryItem)
+        })
+        
+        console.log(`📡 Inventory POST response status:`, addResponse.status)
+        
+        if (addResponse.ok) {
+          const responseData = await addResponse.json()
+          console.log(`✅ Successfully added to inventory:`, responseData)
+          
+          // Mark shipment as processed
+          const updateResponse = await fetch(`/api/shipments/${shipment._id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ processedToInventory: true })
+          })
+          
+          console.log(`📡 Shipment update response status:`, updateResponse.status)
+          
+          if (updateResponse.ok) {
+            console.log(`✅ Marked shipment ${trackingNumber} as processed`)
+          } else {
+            console.log(`⚠️ Failed to mark shipment as processed, but inventory was added`)
+          }
+          
+          processed++
+        } else {
+          const errorText = await addResponse.text()
+          console.log(`❌ Failed to add shipment ${trackingNumber} to inventory:`, errorText)
+          skipped++
+        }
+        
+      } catch (error) {
+        console.error(`❌ Error processing individual shipment:`, error)
+        skipped++
+      }
+    }
+    
+    console.log(`🎉 Processing complete: ${processed} processed, ${skipped} skipped`)
+    return { processed, skipped }
+    
+  } catch (error: any) {
+    console.error("❌ Error processing delivered shipments:", error)
+    return { processed: 0, skipped: 0, error: error.message }
+  }
+}
+
+// Function to check if delivered shipments should be displayed on inventory
+const shouldDisplayDeliveredShipments = async () => {
+  try {
+    const result = await processDeliveredShipments()
+    
+    if (result.processed > 0) {
+      toast.success(`📦 Inventory Updated!`, {
+        description: `Added ${result.processed} delivered shipments to inventory${result.skipped > 0 ? ` (${result.skipped} skipped)` : ''}`,
+        duration: 5000,
+      })
+      return true // Indicates inventory was updated
+    } else if (result.error) {
+      toast.error("Failed to process shipments", {
+        description: result.error,
+        duration: 4000,
+      })
+    }
+    
+    return false // No updates made
+  } catch (error) {
+    console.error("Error in shouldDisplayDeliveredShipments:", error)
+    return false
+  }
+}
+
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -220,6 +382,8 @@ export default function InventoryPage() {
   // Add pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(25)
+  // Add state for shipment processing
+  const [isProcessingShipments, setIsProcessingShipments] = useState(false)
 
   // Simplified column configuration - decluttered and grouped
   const defaultColumns = [
@@ -844,6 +1008,29 @@ export default function InventoryPage() {
   }
 
   // Add this function inside the InventoryPage component
+  const handleProcessDeliveredShipments = async () => {
+    console.log("🔘 Button clicked - starting shipment processing...")
+    toast.info("Processing shipments...", { description: "Checking for delivered shipments to add to inventory" })
+    
+    setIsProcessingShipments(true)
+    
+    try {
+      const result = await shouldDisplayDeliveredShipments()
+      console.log("🎯 Processing result:", result)
+      
+      if (result) {
+        // Refresh inventory data after processing shipments
+        console.log("🔄 Refreshing inventory data...")
+        await fetchInventory()
+      }
+    } catch (error) {
+      console.error("❌ Error in handleProcessDeliveredShipments:", error)
+      toast.error("Error processing shipments", { description: String(error) })
+    } finally {
+      setIsProcessingShipments(false)
+    }
+  }
+
   const handleImportSuccess = () => {
     fetchInventory()
   }
@@ -1045,6 +1232,25 @@ export default function InventoryPage() {
               >
                 <Download className="h-4 w-4 mr-2" />
                 Export
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleProcessDeliveredShipments}
+                disabled={isProcessingShipments}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                {isProcessingShipments ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Package className="h-4 w-4 mr-2" />
+                    Process Shipments
+                  </>
+                )}
               </Button>
               <Button
                 variant="outline"
