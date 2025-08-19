@@ -17,6 +17,15 @@ export function getGmailClient() {
       access_token: process.env.GOOGLE_ACCESS_TOKEN,
       refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
     })
+
+    // Set up automatic token refresh
+    auth.on('tokens', (tokens) => {
+      console.log('🔄 Gmail tokens refreshed automatically')
+      if (tokens.refresh_token) {
+        // In a production app, you'd save this to your database
+        console.log('💾 New refresh token available - update your .env.local if needed')
+      }
+    })
   }
 
   return google.gmail({ version: "v1", auth })

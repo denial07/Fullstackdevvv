@@ -3,7 +3,7 @@
  * Run this file to get your access and refresh tokens
  */
 
-import { google } from 'googleapis';
+const { google } = require('googleapis');
 
 const CLIENT_ID = '55719895427-gsfdgtbmai901mp16l4h9ikcg3aroiol.apps.googleusercontent.com';
 const CLIENT_SECRET = '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';

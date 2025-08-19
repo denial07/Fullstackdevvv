@@ -89,7 +89,6 @@ interface EmailAnalysis {
 }
 
 const categories = [
-  { key: "primary", label: "Primary", icon: Inbox, count: 0 },
   { key: "updates", label: "Updates", icon: Bell, count: 0 },
 ]
 
@@ -99,7 +98,7 @@ export default function InboxPage() {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("primary")
+  const [selectedCategory, setSelectedCategory] = useState("updates")
   const [showUnreadOnly, setShowUnreadOnly] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isLoadingGmail, setIsLoadingGmail] = useState(false)
@@ -125,11 +124,9 @@ export default function InboxPage() {
   })
 
   // Update category counts
-  const primaryCount = emails.filter((email) => email.category === "primary").length
   const updatesCount = emails.filter((email) => email.category === "updates").length
 
-  categories[0].count = primaryCount
-  categories[1].count = updatesCount
+  categories[0].count = updatesCount
 
   const unreadCount = emails.filter((email) => !email.isRead).length
 
