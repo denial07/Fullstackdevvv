@@ -1,36 +1,15 @@
-
 "use client";
 
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table as UiTable,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  ArrowLeft,
-  Search,
-  Filter,
-  Ship,
-  Clock,
-  AlertTriangle,
-} from "lucide-react";
+import { Table as UiTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ArrowLeft, Search, Filter, Ship, Clock, AlertTriangle } from "lucide-react";
 import { UserNav } from "@/components/user-nav";
 
 import ExportMenu from "@/components/ExportMenu";
@@ -44,9 +23,9 @@ import {
   type ColumnDef,
   type ColumnFiltersState,
 } from "@tanstack/react-table";
+import { filterFns as rtFilterFns } from "@tanstack/table-core";
 
 /** -------- helpers/types -------- */
-
 const getStatusColor = (status: string) => {
   switch (status) {
     case "Arrived":
@@ -85,18 +64,15 @@ function getDefaultValueFromType(t: string) {
   }
 }
 
-/** ---- NEW: custom filter functions for TanStack ---- */
-const filterFns = {
-  inArray: (row: any, columnId: string, filterValue?: string[]) => {
-    if (!filterValue || filterValue.length === 0) return true;
+/** ---- Custom + built-in filter fns (single source of truth) ---- */
+const customFilterFns = {
+  ...rtFilterFns, // includesString, equalsString, inNumberRange, etc.
+  inArray: (row: any, columnId: string, list?: string[]) => {
+    if (!list || !list.length) return true;
     const v = row.getValue(columnId);
-    return filterValue.includes(String(v));
+    return list.includes(String(v));
   },
-  inDateRange: (
-    row: any,
-    columnId: string,
-    range?: { from?: string; to?: string }
-  ) => {
+  inDateRange: (row: any, columnId: string, range?: { from?: string; to?: string }) => {
     if (!range || (!range.from && !range.to)) return true;
     const raw = row.getValue(columnId);
     if (!raw) return false;
@@ -106,24 +82,10 @@ const filterFns = {
     if (range.to && d > new Date(range.to)) return false;
     return true;
   },
-  inNumberRange: (
-    row: any,
-    columnId: string,
-    range?: { min?: number; max?: number }
-  ) => {
-    if (!range || (range.min == null && range.max == null)) return true;
-    const n = Number(row.getValue(columnId));
-    if (Number.isNaN(n)) return false;
-    if (range.min != null && n < range.min) return false;
-    if (range.max != null && n > range.max) return false;
-    return true;
-  },
   includesAnyCI: (row: any, columnId: string, values?: string[]) => {
-    if (!values || values.length === 0) return true;
-    const v = row.getValue(columnId);
-    if (v == null) return false;
-    const s = String(v).toLowerCase();
-    return values.some((needle) => s.includes(String(needle).toLowerCase()));
+    if (!values || !values.length) return true;
+    const s = String(row.getValue(columnId) ?? "").toLowerCase();
+    return values.some((v) => s.includes(String(v).toLowerCase()));
   },
 } as const;
 
@@ -141,12 +103,12 @@ export default function IncomingShipmentsPage() {
   const [newColumn, setNewColumn] = useState("");
   const [newColumnType, setNewColumnType] = useState("string");
 
-  // NEW: search + filters state (drives table + export)
+  // search + filters state
   const [globalFilter, setGlobalFilter] = useState("");
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Named filter models (UI)
+  // UI filter models
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [etaRange, setEtaRange] = useState<{ from?: string; to?: string }>({});
   const [valueRange, setValueRange] = useState<{ min?: number; max?: number }>({});
@@ -175,14 +137,14 @@ export default function IncomingShipmentsPage() {
         return (row as any).type ?? (row as any).Type ?? undefined;
       };
 
-      const filtered = data.filter((r) => getTypeVal(r)?.toLowerCase() === "incoming");
-      if (!filtered.length) {
+      const incoming = data.filter((r) => getTypeVal(r)?.toLowerCase() === "incoming");
+      if (!incoming.length) {
         setShipments([]);
         setColumns([]);
         return;
       }
 
-      const filteredKeys = Array.from(new Set(filtered.flatMap(Object.keys)));
+      const filteredKeys = Array.from(new Set(incoming.flatMap(Object.keys)));
 
       const aliasRes = await fetch("/api/normalize-columns", {
         method: "POST",
@@ -192,58 +154,56 @@ export default function IncomingShipmentsPage() {
 
       const aliasMap = (await aliasRes.json()) as Record<string, string | string[]>;
 
-      const inferredColumns: ColumnSpec[] = Object.entries(aliasMap).map(
-        ([label, raw]) => ({
-          key: Array.isArray(raw) ? raw.join("|") : raw,
-          label,
-          width: "min-w-[200px]",
-        })
-      );
+      const inferredColumns: ColumnSpec[] = Object.entries(aliasMap).map(([label, raw]) => ({
+        key: Array.isArray(raw) ? raw.join("|") : raw,
+        label,
+        width: "min-w-[200px]",
+      }));
 
       setColumns(inferredColumns);
-      setShipments(filtered);
+      setShipments(incoming);
     };
 
     loadShipments();
   }, []);
 
-  /** ----- identify important columns for filters ----- */
+  /** ----- identify columns for filters / warehouse ----- */
   const statusColId = useMemo(
     () => columns.find((c) => /status/i.test(c.key) || /status/i.test(c.label))?.key,
     [columns]
   );
   const etaColId = useMemo(
-    () =>
-      columns.find(
-        (c) => /\beta\b|eta|arrival|date/i.test(c.key) || /\bETA\b|Arrival|Date/i.test(c.label)
-      )?.key,
+    () => columns.find((c) => /\beta\b|eta|arrival|date/i.test(c.key) || /\bETA\b|Arrival|Date/i.test(c.label))?.key,
     [columns]
   );
   const valueColId = useMemo(
-    () =>
-      columns.find(
-        (c) => /declaredvalue|value|amount|price|cost/i.test(c.key) || /Value|Amount|Price/i.test(c.label)
-      )?.key,
+    () => columns.find((c) => /declaredvalue|value|amount|price|cost/i.test(c.key) || /Value|Amount|Price/i.test(c.label))?.key,
     [columns]
   );
-  const vendorColId = React.useMemo(
-    () => columns.find(c => /vendor|supplier/i.test(c.key) || /Vendor|Supplier/i.test(c.label))?.key,
+  const vendorColId = useMemo(
+    () => columns.find((c) => /vendor|supplier/i.test(c.key) || /Vendor|Supplier/i.test(c.label))?.key,
+    [columns]
+  );
+  const originColId = useMemo(
+    () => columns.find((c) => /origin|country|port|from/i.test(c.key) || /Origin|Country|Port/i.test(c.label))?.key,
+    [columns]
+  );
+  const trackingColId = useMemo(
+    () => columns.find((c) => /tracking/i.test(c.key) || /Tracking/i.test(c.label))?.key,
+    [columns]
+  );
+  const descriptionColId = useMemo(
+    () => columns.find((c) => /description|desc/i.test(c.key) || /Description|Desc/i.test(c.label))?.key,
+    [columns]
+  );
+  const qtyColId = useMemo(
+    () => columns.find((c) => /(qty|quantity|container)/i.test(c.key) || /(Qty|Quantity|Container)/i.test(c.label))?.key,
     [columns]
   );
 
-  const originColId = React.useMemo(
-    () => columns.find(c => /origin|country|port|from/i.test(c.key) || /Origin|Country|Port/i.test(c.label))?.key,
-    [columns]
-  );
-
-  const trackingColId = React.useMemo(
-    () => columns.find(c => /tracking/i.test(c.key) || /Tracking/i.test(c.label))?.key,
-    [columns]
-  );
-
-  /** ----- column defs for TanStack (built from your ColumnSpec) ----- */
+  /** ----- column defs for TanStack ----- */
   const columnDefs = useMemo<ColumnDef<Row>[]>(() => {
-    const defs: ColumnDef<Row>[] = columns.map((c) => {
+    return columns.map((c) => {
       const isStatus = c.key === statusColId;
       const isEta = c.key === etaColId;
       const isValue = c.key === valueColId;
@@ -255,14 +215,19 @@ export default function IncomingShipmentsPage() {
         id: c.key,
         header: c.label || c.key,
         enableGlobalFilter: true,
-        filterFn:
-          isStatus ? "inArray" :
-            isEta ? "inDateRange" :
-              isValue ? "inNumberRange" :
-                isVendor ? "inArray" : // or "includesAnyCI" for partials
-                  isOrigin ? "inArray" : // or "includesAnyCI"
-                    isTracking ? "includesString" :
-                      "includesString",
+        filterFn: isStatus
+          ? "inArray"
+          : isEta
+          ? "inDateRange"
+          : isValue
+          ? "inNumberRange"
+          : isVendor
+          ? "inArray" // or "includesAnyCI"
+          : isOrigin
+          ? "inArray" // or "includesAnyCI"
+          : isTracking
+          ? "includesString"
+          : "includesString",
         accessorFn: (row) => {
           if (c.key.includes("|")) {
             const parts = c.key.split("|");
@@ -275,14 +240,13 @@ export default function IncomingShipmentsPage() {
         },
       } as ColumnDef<Row>;
     });
-    return defs;
-  }, [columns, statusColId, etaColId, valueColId]);
+  }, [columns, statusColId, etaColId, valueColId, vendorColId, originColId, trackingColId]);
 
-  /** ----- TanStack table instance (drives export now) ----- */
+  /** ----- table instance ----- */
   const tableInstance = useReactTable<Row>({
     data: shipments,
     columns: columnDefs,
-    filterFns, // register custom filter fns
+    filterFns: customFilterFns,
     state: { globalFilter, columnFilters },
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
@@ -291,10 +255,9 @@ export default function IncomingShipmentsPage() {
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    enableGlobalFilter: true,
   });
 
-  /** ----- derive available statuses from pre-filtered data ----- */
+  /** ----- options for multi-selects (from pre-filtered) ----- */
   const statusOptions = useMemo(() => {
     if (!statusColId) return [] as string[];
     const set = new Set<string>();
@@ -303,7 +266,7 @@ export default function IncomingShipmentsPage() {
       if (v != null && v !== "") set.add(String(v));
     });
     return Array.from(set).sort();
-  }, [tableInstance, statusColId, shipments]);
+  }, [tableInstance, statusColId]);
 
   const vendorOptions = useMemo(() => {
     if (!vendorColId) return [] as string[];
@@ -325,11 +288,16 @@ export default function IncomingShipmentsPage() {
     return Array.from(set).sort();
   }, [tableInstance, originColId]);
 
+  /** ----- sync UI filters -> columnFilters ----- */
   useEffect(() => {
     setColumnFilters((prev) => {
       const idsToRemove = [
-        statusColId, etaColId, valueColId,
-        vendorColId, originColId, trackingColId,
+        statusColId,
+        etaColId,
+        valueColId,
+        vendorColId,
+        originColId,
+        trackingColId,
       ].filter(Boolean) as string[];
 
       const next = prev.filter((f) => !idsToRemove.includes(f.id));
@@ -344,7 +312,7 @@ export default function IncomingShipmentsPage() {
         next.push({ id: valueColId, value: { ...valueRange } });
 
       if (vendorColId && selectedVendors.length)
-        next.push({ id: vendorColId, value: selectedVendors });  // OR values for includesAnyCI
+        next.push({ id: vendorColId, value: selectedVendors });
 
       if (originColId && selectedOrigins.length)
         next.push({ id: originColId, value: selectedOrigins });
@@ -355,13 +323,21 @@ export default function IncomingShipmentsPage() {
       return next;
     });
   }, [
-    selectedStatuses, etaRange, valueRange,
-    selectedVendors, selectedOrigins, trackingContains,
-    statusColId, etaColId, valueColId, vendorColId, originColId, trackingColId,
+    selectedStatuses,
+    etaRange,
+    valueRange,
+    selectedVendors,
+    selectedOrigins,
+    trackingContains,
+    statusColId,
+    etaColId,
+    valueColId,
+    vendorColId,
+    originColId,
+    trackingColId,
   ]);
 
-
-  /** ----- column header edit helpers ----- */
+  /** ----- header editing / add / delete ----- */
   const handleEditColumn = (col: { key: string; label: string }) => {
     setEditingColumn(col.key);
     setEditingColumnLabel(col.label);
@@ -399,15 +375,12 @@ export default function IncomingShipmentsPage() {
   };
 
   function getRowKey(row: Row, index: number): string {
-    const cand =
-      (row as any)._id ?? (row as any).id ?? (row as any).trackingNumber ?? (row as any).uuid;
+    const cand = (row as any)._id ?? (row as any).id ?? (row as any).trackingNumber ?? (row as any).uuid;
     return cand != null ? String(cand) : `row-${index}`;
   }
 
   const handleDeleteColumn = async (key: string) => {
-    const ok = window.confirm(
-      `Are you sure you want to delete column "${key}" from all shipments?`
-    );
+    const ok = window.confirm(`Are you sure you want to delete column "${key}" from all shipments?`);
     if (!ok) return;
 
     try {
@@ -434,7 +407,6 @@ export default function IncomingShipmentsPage() {
       width: "w-32",
     };
 
-    // optimistic UI
     setColumns((prev) => [...prev, newCol]);
     setNewColumn("");
 
@@ -442,23 +414,14 @@ export default function IncomingShipmentsPage() {
       const res = await fetch("/api/shipments/add-column", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          columnKey: newColKey,
-          columnType: newColumnType,
-        }),
+        body: JSON.stringify({ columnKey: newColKey, columnType: newColumnType }),
       });
 
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.error || "Failed to add column");
 
       const defaultValue = getDefaultValueFromType(newColumnType);
-
-      setShipments((prev) =>
-        prev.map((s) => ({
-          ...s,
-          [newColKey]: (s as any)[newColKey] ?? defaultValue,
-        }))
-      );
+      setShipments((prev) => prev.map((s) => ({ ...s, [newColKey]: (s as any)[newColKey] ?? defaultValue })));
     } catch (err) {
       console.error("❌ Error adding column:", err);
       alert("Error adding column: " + (err as Error).message);
@@ -498,9 +461,7 @@ export default function IncomingShipmentsPage() {
 
     if (key.includes("|")) {
       const mergedKeys = key.split("|");
-      const mergedValue = mergedKeys
-        .map((k) => (shipment as any)[k])
-        .find((v) => v != null && v !== "");
+      const mergedValue = mergedKeys.map((k) => (shipment as any)[k]).find((v) => v != null && v !== "");
       return mergedValue ?? "-";
     }
 
@@ -512,11 +473,7 @@ export default function IncomingShipmentsPage() {
         return <Badge variant={getStatusColor(String(value))}>{String(value)}</Badge>;
       }
       if (key === "delay") {
-        return Number(value) > 0 ? (
-          <span className="text-red-600 font-medium">{String(value)}</span>
-        ) : (
-          <span className="text-green-600">0</span>
-        );
+        return Number(value) > 0 ? <span className="text-red-600 font-medium">{String(value)}</span> : <span className="text-green-600">0</span>;
       }
     }
 
@@ -553,48 +510,38 @@ export default function IncomingShipmentsPage() {
           </div>
         ) : (
           <div className="flex items-center space-x-2">
-            <input
-              value={tempValue}
-              onChange={(e) => setTempValue(e.target.value)}
-              className="border border-gray-300 px-2 py-1 rounded w-full"
-              onClick={(e) => e.stopPropagation()}
-            />
-            <Button
-              size="sm"
-              onClick={() => {
-                handleEdit(String((shipment as any)._id), key, tempValue);
-                setEditingCell(null);
-              }}
-              title="Confirm"
-            >
-              ✅
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setEditingCell(null)} title="Cancel">
-              ❌
-            </Button>
+            <input value={tempValue} onChange={(e) => setTempValue(e.target.value)} className="border border-gray-300 px-2 py-1 rounded w-full" onClick={(e) => e.stopPropagation()} />
+            <Button size="sm" onClick={() => { handleEdit(String((shipment as any)._id), key, tempValue); setEditingCell(null); }} title="Confirm">✅</Button>
+            <Button size="sm" variant="outline" onClick={() => setEditingCell(null)} title="Cancel">❌</Button>
           </div>
         )}
       </div>
     );
   };
 
-  /** ----- metrics reflect FILTERED data now ----- */
+  /** ----- metrics from FILTERED data ----- */
   const filteredRows = tableInstance.getFilteredRowModel().rows;
   const filteredData: Row[] = filteredRows.map((r) => r.original as Row);
 
-  const totalValue = filteredData.reduce(
-    (sum, s) => sum + (Number((s as any).declaredvalue) || 0),
-    0
-  );
+  const totalValue = filteredData.reduce((sum, s) => sum + (Number((s as any).declaredvalue) || 0), 0);
   const delayed = filteredData.filter((s) => (s as any).status === "Delayed").length;
   const inTransit = filteredData.filter((s) => (s as any).status === "In Transit").length;
   const arrived = filteredData.filter((s) => ["Delivered", "Arrived"].includes(String((s as any).status))).length;
+
+  const warehouseIds = {
+    eta: etaColId ?? "eta",
+    description: descriptionColId ?? "description",
+    qty: qtyColId ?? "qty",
+  } as const;
 
   function clearAllFilters() {
     setGlobalFilter("");
     setSelectedStatuses([]);
     setEtaRange({});
     setValueRange({});
+    setSelectedVendors([]);
+    setSelectedOrigins([]);
+    setTrackingContains("");
     setColumnFilters([]);
   }
 
@@ -615,8 +562,8 @@ export default function IncomingShipmentsPage() {
               </div>
             </div>
             <div className="flex space-x-2">
-              {/* Export now uses the table instance to export FILTERED rows */}
-              <ExportMenu table={tableInstance} rows={shipments} columnSpecs={columns} fileNameBase="shipments" warehouseMap={{ eta: "eta", description: "description", qty: "qty" }} />
+              {/* ✅ Export uses the table instance ONLY (filtered/selected) */}
+              <ExportMenu table={tableInstance} fileNameBase="shipments" warehouseMap={warehouseIds} />
               <Button size="sm">Log Incoming</Button>
               <UserNav />
             </div>
@@ -626,77 +573,30 @@ export default function IncomingShipmentsPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Total Incoming (filtered)</CardTitle>
-              <Ship className="h-4 w-4" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{filteredData.length}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">In Transit</CardTitle>
-              <Clock className="h-4 w-4" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{inTransit}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Delayed</CardTitle>
-              <AlertTriangle className="h-4 w-4" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">{delayed}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Arrived</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{arrived}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Total Value</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">S${totalValue.toLocaleString()}</div>
-            </CardContent>
-          </Card>
+          <Card><CardHeader><CardTitle className="text-sm">Total Incoming (filtered)</CardTitle><Ship className="h-4 w-4" /></CardHeader><CardContent><div className="text-2xl font-bold">{filteredData.length}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-sm">In Transit</CardTitle><Clock className="h-4 w-4" /></CardHeader><CardContent><div className="text-2xl font-bold">{inTransit}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-sm">Delayed</CardTitle><AlertTriangle className="h-4 w-4" /></CardHeader><CardContent><div className="text-2xl font-bold text-red-600">{delayed}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-sm">Arrived</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold text-green-600">{arrived}</div></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-sm">Total Value</CardTitle></CardHeader><CardContent><div className="text-2xl font-bold">S${totalValue.toLocaleString()}</div></CardContent></Card>
         </div>
 
         <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Search & Filter</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>Search & Filter</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col sm:flex-row gap-4 items-stretch">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search across all columns..."
-                  className="pl-10"
-                  value={globalFilter ?? ""}
-                  onChange={(e) => setGlobalFilter(e.target.value)}
-                />
+                <Input placeholder="Search across all columns..." className="pl-10" value={globalFilter ?? ""} onChange={(e) => setGlobalFilter(e.target.value)} />
               </div>
               <Button variant={filtersOpen ? "default" : "outline"} onClick={() => setFiltersOpen((v) => !v)}>
                 <Filter className="h-4 w-4 mr-2" /> {filtersOpen ? "Hide Filters" : "Filters"}
               </Button>
-              <Button variant="ghost" onClick={clearAllFilters} className="sm:w-auto w-full">
-                Reset
-              </Button>
+              <Button variant="ghost" onClick={clearAllFilters} className="sm:w-auto w-full">Reset</Button>
             </div>
 
             {filtersOpen && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border rounded-lg p-4 bg-muted/30">
-                {/* Status filter */}
+                {/* Status */}
                 {statusColId && (
                   <div>
                     <div className="text-sm font-medium mb-2">Status</div>
@@ -704,16 +604,7 @@ export default function IncomingShipmentsPage() {
                       {statusOptions.map((s) => {
                         const active = selectedStatuses.includes(s);
                         return (
-                          <button
-                            key={s}
-                            onClick={() =>
-                              setSelectedStatuses((prev) =>
-                                prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
-                              )
-                            }
-                            className={`px-2 py-1 rounded border text-sm ${active ? "bg-primary text-primary-foreground" : "bg-white"
-                              }`}
-                          >
+                          <button key={s} onClick={() => setSelectedStatuses((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))} className={`px-2 py-1 rounded border text-sm ${active ? "bg-primary text-primary-foreground" : "bg-white"}`}>
                             {s}
                           </button>
                         );
@@ -727,16 +618,8 @@ export default function IncomingShipmentsPage() {
                   <div>
                     <div className="text-sm font-medium mb-2">ETA range</div>
                     <div className="flex gap-2">
-                      <Input
-                        type="date"
-                        value={etaRange.from ?? ""}
-                        onChange={(e) => setEtaRange((r) => ({ ...r, from: e.target.value }))}
-                      />
-                      <Input
-                        type="date"
-                        value={etaRange.to ?? ""}
-                        onChange={(e) => setEtaRange((r) => ({ ...r, to: e.target.value }))}
-                      />
+                      <Input type="date" value={etaRange.from ?? ""} onChange={(e) => setEtaRange((r) => ({ ...r, from: e.target.value }))} />
+                      <Input type="date" value={etaRange.to ?? ""} onChange={(e) => setEtaRange((r) => ({ ...r, to: e.target.value }))} />
                     </div>
                   </div>
                 )}
@@ -746,26 +629,13 @@ export default function IncomingShipmentsPage() {
                   <div>
                     <div className="text-sm font-medium mb-2">Value (min / max)</div>
                     <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        placeholder="Min"
-                        value={valueRange.min ?? ""}
-                        onChange={(e) =>
-                          setValueRange((r) => ({ ...r, min: e.target.value ? Number(e.target.value) : undefined }))
-                        }
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Max"
-                        value={valueRange.max ?? ""}
-                        onChange={(e) =>
-                          setValueRange((r) => ({ ...r, max: e.target.value ? Number(e.target.value) : undefined }))
-                        }
-                      />
+                      <Input type="number" placeholder="Min" value={valueRange.min ?? ""} onChange={(e) => setValueRange((r) => ({ ...r, min: e.target.value ? Number(e.target.value) : undefined }))} />
+                      <Input type="number" placeholder="Max" value={valueRange.max ?? ""} onChange={(e) => setValueRange((r) => ({ ...r, max: e.target.value ? Number(e.target.value) : undefined }))} />
                     </div>
                   </div>
                 )}
-                {/* Vendor – chips multi-select */}
+
+                {/* Vendor */}
                 {vendorColId && (
                   <div>
                     <div className="text-sm font-medium mb-2">Vendor</div>
@@ -773,16 +643,7 @@ export default function IncomingShipmentsPage() {
                       {vendorOptions.map((v) => {
                         const active = selectedVendors.includes(v);
                         return (
-                          <button
-                            key={v}
-                            onClick={() =>
-                              setSelectedVendors((prev) =>
-                                prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]
-                              )
-                            }
-                            className={`px-2 py-1 rounded border text-sm ${active ? "bg-primary text-primary-foreground" : "bg-white"
-                              }`}
-                          >
+                          <button key={v} onClick={() => setSelectedVendors((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))} className={`px-2 py-1 rounded border text-sm ${active ? "bg-primary text-primary-foreground" : "bg-white"}`}>
                             {v}
                           </button>
                         );
@@ -791,7 +652,7 @@ export default function IncomingShipmentsPage() {
                   </div>
                 )}
 
-                {/* Origin – checkbox list */}
+                {/* Origin */}
                 {originColId && (
                   <div>
                     <div className="text-sm font-medium mb-2">Origin</div>
@@ -800,15 +661,7 @@ export default function IncomingShipmentsPage() {
                         const checked = selectedOrigins.includes(o);
                         return (
                           <label key={o} className="inline-flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) =>
-                                setSelectedOrigins((prev) =>
-                                  e.target.checked ? [...prev, o] : prev.filter((x) => x !== o)
-                                )
-                              }
-                            />
+                            <input type="checkbox" checked={checked} onChange={(e) => setSelectedOrigins((prev) => (e.target.checked ? [...prev, o] : prev.filter((x) => x !== o)))} />
                             {o}
                           </label>
                         );
@@ -821,11 +674,7 @@ export default function IncomingShipmentsPage() {
                 {trackingColId && (
                   <div>
                     <div className="text-sm font-medium mb-2">Tracking contains</div>
-                    <Input
-                      placeholder="e.g. DHL / 1Z..."
-                      value={trackingContains}
-                      onChange={(e) => setTrackingContains(e.target.value)}
-                    />
+                    <Input placeholder="e.g. DHL / 1Z..." value={trackingContains} onChange={(e) => setTrackingContains(e.target.value)} />
                   </div>
                 )}
               </div>
@@ -833,29 +682,19 @@ export default function IncomingShipmentsPage() {
           </CardContent>
         </Card>
 
+        {/* Add column */}
         <div className="flex items-center gap-2 mb-4">
-          <Input
-            type="text"
-            placeholder="New column name"
-            value={newColumn}
-            onChange={(e) => setNewColumn(e.target.value)}
-            className="w-64"
-          />
-
-          <select
-            value={newColumnType}
-            onChange={(e) => setNewColumnType(e.target.value)}
-            className="border rounded px-2 py-1 text-sm"
-          >
+          <Input type="text" placeholder="New column name" value={newColumn} onChange={(e) => setNewColumn(e.target.value)} className="w-64" />
+          <select value={newColumnType} onChange={(e) => setNewColumnType(e.target.value)} className="border rounded px-2 py-1 text-sm">
             <option value="string">String</option>
             <option value="number">Number</option>
             <option value="boolean">Boolean</option>
             <option value="date">Date</option>
           </select>
-
           <Button onClick={handleAddColumn}>Add Column</Button>
         </div>
 
+        {/* Table */}
         <Card>
           <CardHeader>
             <CardTitle>All Incoming Shipments</CardTitle>
@@ -867,40 +706,17 @@ export default function IncomingShipmentsPage() {
                 <TableHeader>
                   <TableRow>
                     {columns.map((col, index) => (
-                      <TableHead
-                        key={col.key}
-                        className={`${col.width} cursor-move group relative`}
-                        draggable
-                        onDragStart={() => handleDragStart(index)}
-                        onDragOver={handleDragOver}
-                        onDrop={() => handleDrop(index)}
-                      >
+                      <TableHead key={col.key} className={`${col.width} cursor-move group relative`} draggable onDragStart={() => handleDragStart(index)} onDragOver={handleDragOver} onDrop={() => handleDrop(index)}>
                         <div className="flex items-center justify-between gap-2">
                           {editingColumn === col.key ? (
-                            <input
-                              className="border rounded px-1 text-sm w-full"
-                              value={editingColumnLabel}
-                              onChange={(e) => setEditingColumnLabel(e.target.value)}
-                              onBlur={() => handleSaveColumnLabel(col.key)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") handleSaveColumnLabel(col.key);
-                                if (e.key === "Escape") setEditingColumn(null);
-                              }}
-                              autoFocus
-                            />
+                            <input className="border rounded px-1 text-sm w-full" value={editingColumnLabel} onChange={(e) => setEditingColumnLabel(e.target.value)} onBlur={() => handleSaveColumnLabel(col.key)} onKeyDown={(e) => { if (e.key === "Enter") handleSaveColumnLabel(col.key); if (e.key === "Escape") setEditingColumn(null); }} autoFocus />
                           ) : (
                             <span className="hover:underline w-full" onDoubleClick={() => handleEditColumn(col)}>
                               {col.label}
                             </span>
                           )}
 
-                          <button
-                            className="text-red-500 opacity-0 group-hover:opacity-100 transition text-xs"
-                            onClick={() => handleDeleteColumn(col.key)}
-                            title="Delete column"
-                          >
-                            🗑️
-                          </button>
+                          <button className="text-red-500 opacity-0 group-hover:opacity-100 transition text-xs" onClick={() => handleDeleteColumn(col.key)} title="Delete column">🗑️</button>
                         </div>
                       </TableHead>
                     ))}
