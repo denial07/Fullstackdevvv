@@ -1,8 +1,8 @@
 'use client'
 
-// app/(dashboard)/page.tsx — Revamped client dashboard with fixed Hooks order
-// All hooks (useMemo) are now declared before any early returns to satisfy React Rules of Hooks.
-// Data still comes only from /api/dashboard and /api/explore (no client DB).
+// app/(dashboard)/page.tsx — Revamped client dashboard
+// Shipment summary & trends are now derived from shipments data (recentShipments).
+// Inventory-related code is untouched. Data still comes from /api/dashboard and /api/explore (no client DB).
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -31,23 +31,25 @@ import {
   Cell,
 } from 'recharts'
 
-// ---------------- Types (matches /api/dashboard response) ----------------
+// ---------------- Types (matches /api/dashboard response where relevant) ----------------
 type ShipmentSummary = { total: number; inTransit: number; delayed: number; arrived: number; totalValue: number }
 type InventorySummary = { totalItems: number; lowStock: number; expiringSoon: number; expired: number; totalValue: number }
 
-type ShipmentTrendPoint = { week: string; incoming: number; internal: number; delayed: number }
+// Trends now derived from shipments: weekly counts by status
+type ShipmentTrendPoint = { week: string; inTransit: number; arrived: number; delayed: number }
 type InventoryValueSlice = { name: string; value: number }
 type DailyOpsPoint = { day: string; shipments: number; inventory: number }
 type RecentShipment = { id: string; vendor: string; status: 'In Transit' | 'Delayed' | 'Arrived'; expectedArrival: string; value: number; delay: number }
 type CriticalInventory = { id: string; item: string; quantity: number; unit: string; expiryDate: string; status: 'Low Stock' | 'Expiring Soon' | 'Expired' }
 
+// NOTE: shipmentSummary and shipmentTrends removed from API shape; we derive them from recentShipments.
 type DashboardData = {
-  shipmentSummary: ShipmentSummary
+  // shipmentSummary: ShipmentSummary                               // ← removed (derived)
+  // shipmentTrends: ShipmentTrendPoint[]                           // ← removed (derived)
   inventorySummary: InventorySummary
-  shipmentTrends: ShipmentTrendPoint[]
   inventoryValueDist: InventoryValueSlice[]
   dailyOps: DailyOpsPoint[]
-  recentShipments: RecentShipment[]
+  recentShipments: RecentShipment[]          // ← source of truth for shipments
   criticalInventory: CriticalInventory[]
 }
 
@@ -83,6 +85,47 @@ export default function DashboardPage() {
   const recentShipmentsArr = data?.recentShipments ?? []
   const criticalInventoryArr = data?.criticalInventory ?? []
 
+  // (1) Shipment KPIs derived from shipments data
+  const shipmentSummary: ShipmentSummary = useMemo(() => {
+    let inTransit = 0, delayed = 0, arrived = 0, totalValue = 0
+    for (const s of recentShipmentsArr) {
+      if (s.status === 'In Transit') inTransit++
+      if (s.status === 'Arrived') arrived++
+      // treat any positive delay or explicit 'Delayed' status as delayed
+      if (s.status === 'Delayed' || (s.delay || 0) > 0) delayed++
+      totalValue += Number(s.value || 0)
+    }
+    return {
+      total: recentShipmentsArr.length,
+      inTransit,
+      delayed,
+      arrived,
+      totalValue
+    }
+  }, [recentShipmentsArr])
+
+  // (2) Shipment trends derived from shipments data
+  const shipmentTrends: ShipmentTrendPoint[] = useMemo(() => {
+    // Group by start-of-week (Mon) using expectedArrival
+    const map = new Map<string, { ts: number; inTransit: number; arrived: number; delayed: number }>()
+    for (const s of recentShipmentsArr) {
+      const key = weekKeyFromISO(s.expectedArrival)
+      // Skip if date invalid
+      if (!key) continue
+      const row = map.get(key) || { ts: new Date(key).getTime(), inTransit: 0, arrived: 0, delayed: 0 }
+      if (s.status === 'In Transit') row.inTransit++
+      if (s.status === 'Arrived') row.arrived++
+      if (s.status === 'Delayed' || (s.delay || 0) > 0) row.delayed++
+      map.set(key, row)
+    }
+    // Sort by week ascending
+    const rows = Array.from(map.entries())
+      .sort((a, b) => a[1].ts - b[1].ts)
+      .map(([week, v]) => ({ week: formatWeekLabel(week), inTransit: v.inTransit, arrived: v.arrived, delayed: v.delayed }))
+    return rows
+  }, [recentShipmentsArr])
+
+  // Additional KPIs derived from shipments (unchanged logic, but computed from same source)
   const { recentOnTimeRate, avgDelayDays } = useMemo(() => {
     const arrived = recentShipmentsArr.filter(s => s.status === 'Arrived')
     const onTime = arrived.filter(s => (s.delay || 0) <= 0).length
@@ -93,12 +136,12 @@ export default function DashboardPage() {
   }, [recentShipmentsArr])
 
   const vendorRows = useMemo(() => {
-    const map = new Map<string, { vendor: string; total: number; delayed: number; lastValue: number }>()
+    const map = new Map<string, { vendor: string; total: number; delayed: number; declaredvalue: number }>()
     for (const s of recentShipmentsArr) {
-      const row = map.get(s.vendor) || { vendor: s.vendor || 'Unknown', total: 0, delayed: 0, lastValue: 0 }
+      const row = map.get(s.vendor) || { vendor: s.vendor || 'Unknown', total: 0, delayed: 0, declaredvalue: 0 }
       row.total += 1
       row.delayed += (s.status === 'Delayed' || (s.delay || 0) > 0) ? 1 : 0
-      row.lastValue = s.value || row.lastValue
+      row.declaredvalue = s.value || row.declaredvalue
       map.set(s.vendor, row)
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 5)
@@ -130,7 +173,8 @@ export default function DashboardPage() {
 
   if (!data) return null
 
-  const { shipmentSummary, inventorySummary, shipmentTrends, inventoryValueDist, dailyOps, recentShipments, criticalInventory } = data
+  // Pull only inventory data & supporting fields from API; shipments are already in recentShipments
+  const { inventorySummary, inventoryValueDist, dailyOps, recentShipments, criticalInventory } = data
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -143,21 +187,21 @@ export default function DashboardPage() {
             <h1 className="text-xl font-semibold text-slate-900">Operations Dashboard</h1>
             <p className="text-sm text-slate-600">Real-time view of shipments and inventory health</p>
           </div>
-          <div className="flex items-center gap-2">
+          {/* <div className="flex items-center gap-2">
             <label className="text-sm text-slate-600">Period</label>
             <select className="border rounded px-2 py-1" value={period} onChange={(e) => setPeriod(e.target.value as any)}>
               <option value="7d">Last 7 days</option>
               <option value="30d">Last 30 days</option>
               <option value="90d">Last 90 days</option>
             </select>
-          </div>
+          </div> */}
         </div>
 
         {/* KPI Tiles */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-          <KpiTile label="On‑time (recent)" value={`${recentOnTimeRate}%`} icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />} hint={`${recentShipments.length} recent shipments`} />
-          <KpiTile label="Avg Delay (days)" value={avgDelayDays.toString()} icon={<Clock className="h-4 w-4 text-amber-600" />} />
-          <KpiTile label="Active Shipments" value={shipmentSummary.inTransit.toString()} icon={<Ship className="h-4 w-4 text-blue-700" />} hint={`${shipmentSummary.delayed} delayed`} />
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+
+          <KpiTile label="Active Shipments" value={((shipmentSummary.inTransit)+(shipmentSummary.delayed)).toString()} icon={<Ship className="h-4 w-4 text-blue-700" />} hint={`${shipmentSummary.delayed} delayed`} />
+          {/* Inventory KPIs left untouched */}
           <KpiTile label="Low Stock" value={inventorySummary.lowStock.toString()} icon={<TrendingDown className="h-4 w-4 text-gray-600" />} />
           <KpiTile label="Expiring Soon" value={inventorySummary.expiringSoon.toString()} icon={<AlertTriangle className="h-4 w-4 text-red-600" />} />
           <KpiTile label="Inventory Value" value={`S$${(inventorySummary.totalValue || 0).toLocaleString()}`} icon={<Package className="h-4 w-4 text-emerald-600" />} />
@@ -238,8 +282,7 @@ export default function DashboardPage() {
                         <th className="py-2">Vendor</th>
                         <th className="py-2">Shipments</th>
                         <th className="py-2">Delayed</th>
-                        <th className="py-2">On‑time %</th>
-                        <th className="py-2">Last Value</th>
+                        <th className="py-2">On-time %</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -251,7 +294,6 @@ export default function DashboardPage() {
                             <td className="py-2">{v.total}</td>
                             <td className="py-2">{v.delayed}</td>
                             <td className="py-2">{onTime}%</td>
-                            <td className="py-2">S${(v.lastValue || 0).toLocaleString()}</td>
                           </tr>
                         )
                       })}
@@ -265,7 +307,7 @@ export default function DashboardPage() {
           {/* OVERVIEW */}
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Shipment Status */}
+              {/* Shipment Status (derived) */}
               <Card className="border-slate-200 shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-slate-900">Shipment Status</CardTitle>
@@ -278,7 +320,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              {/* Inventory Health */}
+              {/* Inventory Health (untouched) */}
               <Card className="border-slate-200 shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-slate-900">Inventory Health</CardTitle>
@@ -347,10 +389,36 @@ function toDate(iso?: string) {
   try { return iso ? new Date(iso).toLocaleDateString() : '' } catch { return iso ?? '' }
 }
 
+// Format week key "YYYY-MM-DD" → "MMM d" label (start-of-week)
+function formatWeekLabel(weekKey: string) {
+  try {
+    const d = new Date(weekKey)
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  } catch { return weekKey }
+}
+
+// Get Monday start-of-week ISO date (YYYY-MM-DD) from an ISO string; returns '' if invalid
+function weekKeyFromISO(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  // Normalize to local midnight
+  d.setHours(0, 0, 0, 0)
+  // JS: 0 Sun, 1 Mon, …; shift to Monday-based week
+  const day = d.getDay()
+  const diff = (day === 0 ? -6 : 1 - day) // if Sun(0), go back 6 days; else back to Mon
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + diff)
+  const yyyy = monday.getFullYear()
+  const mm = String(monday.getMonth() + 1).padStart(2, '0')
+  const dd = String(monday.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 function AnalyticsCharts({ shipmentTrends, inventoryValueDist, dailyOps }: { shipmentTrends: ShipmentTrendPoint[]; inventoryValueDist: InventoryValueSlice[]; dailyOps: DailyOpsPoint[] }) {
   return (
     <>
-      {/* Inventory value distribution */}
+      {/* Inventory value distribution (untouched) */}
       <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
         <Card className="border-slate-200 shadow-sm">
           <CardHeader>
@@ -370,32 +438,9 @@ function AnalyticsCharts({ shipmentTrends, inventoryValueDist, dailyOps }: { shi
         </Card>
       </div>
 
-      {/* Shipment trends */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-slate-900">Shipment Trends</CardTitle>
-            <CardDescription className="text-slate-600">Weekly shipment activity and delays</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={shipmentTrends}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="week" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="incoming" fill="#059669" name="Incoming" />
-                <Bar dataKey="internal" fill="#1e40af" name="Internal" />
-                <Bar dataKey="delayed" fill="#dc2626" name="Delayed" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
 
-      {/* Daily operations */}
-      <Card className="border-slate-200 shadow-sm">
+      {/* Daily operations (untouched) */}
+      {/* <Card className="border-slate-200 shadow-sm">
         <CardHeader>
           <CardTitle className="text-slate-900">Daily Operations Overview</CardTitle>
           <CardDescription className="text-slate-600">Weekly activity across shipments and inventory</CardDescription>
@@ -413,7 +458,7 @@ function AnalyticsCharts({ shipmentTrends, inventoryValueDist, dailyOps }: { shi
             </LineChart>
           </ResponsiveContainer>
         </CardContent>
-      </Card>
+      </Card> */}
     </>
   )
 }

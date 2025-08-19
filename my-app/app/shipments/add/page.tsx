@@ -69,7 +69,7 @@ function smartParse(input: string): any {
 export default function AddShipmentPage() {
     const router = useRouter();
 
-    const [shipmentType, setShipmentType] = useState<"incoming" | "outgoing" | "">("");
+    const [shipmentType, setShipmentType] = useState<"incoming" | "internal" | "">("");
     const [status, setStatus] = useState<string>("In Transit"); // sensible default for new incoming
     const [shippingDate, setShippingDate] = useState<Date>();
     const [expectedDate, setExpectedDate] = useState<Date>();
@@ -230,7 +230,7 @@ export default function AddShipmentPage() {
                                     Add New Shipment
                                 </h1>
                                 <p className="text-gray-600 truncate">
-                                    Create a new incoming or outgoing shipment
+                                    Create a new incoming or internal shipment
                                 </p>
                             </div>
                         </div>
@@ -293,14 +293,14 @@ export default function AddShipmentPage() {
                                     <Label htmlFor="type">Shipment Type</Label>
                                     <Select
                                         value={shipmentType}
-                                        onValueChange={(value: "incoming" | "outgoing") => setShipmentType(value)}
+                                        onValueChange={(value: "incoming" | "internal") => setShipmentType(value)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select shipment type" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="incoming">Incoming Shipment</SelectItem>
-                                            <SelectItem value="outgoing">Outgoing Shipment</SelectItem>
+                                            <SelectItem value="internal">Internal Shipment</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>

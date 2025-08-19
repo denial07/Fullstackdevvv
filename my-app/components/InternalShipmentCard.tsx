@@ -6,6 +6,27 @@ import Link from "next/link";
 
 type AnyObj = Record<string, any>;
 type ShipStatus = "Delivered" | "In Transit" | "Delayed";
+type MaybeDate = string | Date | number | null | undefined;
+
+
+const formatDateOnly = (v: MaybeDate): string => {
+    if (!v) return "—";
+
+    // Get a string view first
+    const s = v instanceof Date ? v.toISOString() : String(v);
+
+    // If it starts with YYYY-MM-DD, parse JUST the date part in UTC
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+        const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+        return new Intl.DateTimeFormat("en-SG", { dateStyle: "medium" }).format(d);
+    }
+
+    // Fallback: try normal Date
+    const d = new Date(s);
+    return isNaN(+d) ? s : new Intl.DateTimeFormat("en-SG", { dateStyle: "medium" }).format(d);
+};
+
 
 /* ---------- helpers ---------- */
 function pickDeep<T = any>(obj: AnyObj, paths: string[], fallback?: T): T | undefined {
@@ -177,10 +198,7 @@ export default function InternalShipmentCard({ shipment }: { shipment: AnyObj })
             <p className="text-sm text-gray-600">{vendor}</p>
             <p className="text-xs text-gray-500">{description}</p>
 
-            <p className="text-xs text-gray-500">
-                ETA: {eta ? eta.toLocaleDateString() : "—"}
-                {newEta ? ` (revised: ${newEta.toLocaleDateString()})` : ""}
-            </p>
+
 
             <p className="text-xs text-gray-500">{destination}</p>
 

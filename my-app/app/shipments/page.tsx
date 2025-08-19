@@ -42,10 +42,14 @@ export default async function ShipmentsPage() {
   }> = await res.json();
 
   // 2) Now filter client-safe JSON
-  const activeincoming = shipments.filter(s => s.type.toLowerCase() === "incoming" && s.status !== "Delivered");
-  const activeinternal = shipments.filter(s => s.type.toLowerCase() === "internal" && s.status !== "Delivered");
-  const incoming = shipments.filter(s => s.type.toLowerCase() === "incoming");
-  const internal = shipments.filter(s => s.type.toLowerCase() === "internal");
+  const getType = (s: any) => (s?.type ?? "").toString().trim().toLowerCase();
+  const getStatus = (s: any) => (s?.status ?? "").toString().trim().toLowerCase();
+
+  const activeincoming = shipments.filter(s => getType(s) === "incoming" && getStatus(s) !== "delivered");
+  const activeinternal = shipments.filter(s => getType(s) === "internal" && getStatus(s) !== "delivered");
+  const incoming = shipments.filter(s => getType(s) === "incoming");
+  const internal = shipments.filter(s => getType(s) === "internal");
+
   const activeIncomingCount = activeincoming.length;
   const activeInternalCount = activeinternal.length;
   const incomingTotal = incoming.length;

@@ -418,14 +418,14 @@ export default function EditShipmentPage() {
                                     <Label>Type</Label>
                                     <Select
                                         value={draft.type ?? ""}
-                                        onValueChange={(v: "incoming" | "outgoing") => markDirty("type", v)}
+                                        onValueChange={(v: "incoming" | "internal") => markDirty("type", v)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="incoming">Incoming</SelectItem>
-                                            <SelectItem value="outgoing">Outgoing</SelectItem>
+                                            <SelectItem value="internal">Internal</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
