@@ -4,8 +4,11 @@ import Inventory from "@/lib/models/Inventory";
 import { NextResponse } from "next/server";
 
 /** helpers */
-const isDelivered = (val: unknown) =>
-    typeof val === "string" && val.trim().toLowerCase() === "delivered";
+const isDelivered = (val: unknown) => {
+    if (typeof val === "string") return val.trim().toLowerCase() === "delivered";
+    if (typeof val === "boolean") return val;
+    return false;
+};
 
 const first = (obj: Record<string, any>, keys: string[]) => {
     for (const k of keys) {
@@ -24,40 +27,87 @@ const toNum = (v: any) => {
 const toDateStr = (v?: any) => {
     if (!v) return new Date().toISOString().slice(0, 10);
     const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? new Date().toISOString().slice(0, 10) : d.toISOString().slice(0, 10);
+    const y = d.getUTCFullYear();
+    if (Number.isNaN(d.getTime()) || y < 2000) return new Date().toISOString().slice(0, 10);
+    return d.toISOString().slice(0, 10);
 };
+
+const getPrimaryItem = (s: any) =>
+    s?.item && typeof s.item === "object"
+        ? s.item
+        : Array.isArray(s?.items) && s.items.length > 0
+            ? s.items[0]
+            : null;
 
 /** Map Shipment -> Inventory (matches your current Inventory schema) */
 function buildInventoryFromShipment(s: any, idForInventory: string) {
-    const qty =
-        toNum(first(s, ["qty", "quantity", "units", "containers"])) ?? 0;
+    const itemsArr: any[] =
+        Array.isArray(s?.items) ? s.items : s?.item ? [s.item] : [];
 
-    // Try to compute a reasonable unit cost if we have declared value
-    const totalValue =
-        toNum(first(s, ["declaredvalue", "value", "amount", "cost"])) ?? 0;
-    const costPerUnit = qty > 0 ? Number((totalValue / qty).toFixed(2)) : 0;
+    // total quantity across items; fall back to top-level
+    const qtyFromItems =
+        itemsArr.reduce((sum, it) => sum + (toNum(it?.quantity) || 0), 0) || 0;
+    const qtyTopLevel =
+        toNum(first(s, ["qty", "quantity", "units", "containers"])) || 0;
+    const qty = qtyFromItems || qtyTopLevel;
 
-    const receivedDate =
-        toDateStr(first(s, ["deliveredAt", "arrivalDate", "receivedDate", "eta"]));
-    const expiryDate =
-        toDateStr(first(s, ["expiryDate", "exp", "bestBefore"]));
+    // total value: prefer top-level monetaries; fall back to Σ(q * unitPrice)
+    const topLevelTotal =
+        toNum(
+            first(s, [
+                "price",           // <-- important (your data has this)
+                "totalvalue",
+                "declaredvalue",
+                "value",
+                "amount",
+                "cost",
+            ])
+        ) || 0;
+
+    const itemsTotal =
+        itemsArr.reduce(
+            (sum, it) => sum + (toNum(it?.unitPrice) || 0) * (toNum(it?.quantity) || 0),
+            0
+        ) || 0;
+
+    const totalValue = topLevelTotal || itemsTotal;
+
+    const costPerUnit =
+        qty > 0 ? Number((totalValue / qty).toFixed(2)) :
+            toNum(getPrimaryItem(s)?.unitPrice) || 0;
+
+    // names/labels
+    const primary = getPrimaryItem(s);
+    const itemName =
+        primary?.description ??
+        primary?.name ??
+        primary?.sku ??
+        first(s, ["description", "desc", "item", "productName"]) ??
+        `Shipment ${s._id}`;
+
+    // unit: prefer primary item; else top-level; else default
+    const unit =
+        primary?.unit ??
+        first(s, ["unit", "uom", "unitOfMeasure"]) ??
+        "ea";
+
+    // dates
+    const receivedDate = toDateStr(
+        first(s, ["deliveredAt", "arrivalDate", "receivedDate", "eta"])
+    );
+    const expiryDate = toDateStr(first(s, ["expiryDate", "exp", "bestBefore"]));
 
     return {
-        // 🔑 Use Inventory.id as the dedupe key (no model change needed)
-        id: idForInventory,
-
-        // Required fields in your schema:
-        item:
-            first(s, ["description", "desc", "item", "productName"]) ??
-            `Shipment ${s._id}`,
+        id: idForInventory,                // de-dupe key
+        item: itemName,                    // e.g., "Woods"
         category: first(s, ["category", "type"]) ?? "Uncategorized",
         quantity: qty,
-        unit: first(s, ["unit", "uom", "unitOfMeasure"]) ?? "ea",
+        unit,
         minStock: toNum(first(s, ["minStock", "min"])) ?? 0,
         maxStock: toNum(first(s, ["maxStock", "max"])) ?? qty,
         location: first(s, ["warehouse", "location", "site"]) ?? "Main",
-        receivedDate,                  // string per your schema
-        expiryDate,                    // string per your schema
+        receivedDate,                      // string per your schema
+        expiryDate,                        // string per your schema
         supplier: first(s, ["vendor", "supplier"]) ?? "Unknown",
         costPerUnit,
         status: "In Stock",
@@ -74,22 +124,13 @@ export async function GET(
         const shipment = await Shipment.findById(params.id);
 
         if (!shipment) {
-            return new Response(JSON.stringify({ error: "Shipment not found" }), {
-                status: 404,
-                headers: { "Content-Type": "application/json" },
-            });
+            return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
         }
 
-        return new Response(JSON.stringify(shipment), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-        });
+        return NextResponse.json(shipment, { status: 200 });
     } catch (error) {
         console.error("Error in GET handler:", error);
-        return new Response(JSON.stringify({ error: "Internal Server Error" }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-        });
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
 
@@ -119,26 +160,20 @@ export async function PATCH(
             return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
         }
 
-        // 3) If status changed to Delivered, upsert into Inventory
+        // 3) If status changed to Delivered, upsert into Inventory (update if exists)
         const isNowDelivered = isDelivered(updated.status);
         if (!wasDelivered && isNowDelivered) {
-            // 👇 Dedupe key:
-            // prefer explicit transfer_shipment_id if present, else fallback to shipment _id
-            const transferId =
-                String(
-                    first(updated, [
-                        "transfer_shipment_id",
-                        "transferShipmentId",
-                        "transferId",
-                    ]) ?? updated._id
-                );
+            const transferId = String(
+                first(updated, ["transfer_shipment_id", "transferShipmentId", "transferId"]) ??
+                updated._id
+            );
 
             const invDoc = buildInventoryFromShipment(updated, transferId);
 
-            // upsert by Inventory.id — because your schema already has `id: { unique: true }`
+            // Update on subsequent deliveries/edits; create if missing
             await Inventory.updateOne(
                 { id: transferId },
-                { $setOnInsert: invDoc },
+                { $set: invDoc },
                 { upsert: true }
             );
         }
