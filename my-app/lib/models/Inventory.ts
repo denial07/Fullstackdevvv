@@ -10,10 +10,10 @@ const InventorySchema = new mongoose.Schema(
     minStock: { type: Number, required: true },
     maxStock: { type: Number, required: true },
     location: { type: String, required: true },
-    receivedDate: { type: String, required: true },
-    expiryDate: { type: String, required: true },
+    receivedDate: { type: String, required: false }, // Optional date field
+    expiryDate: { type: String, required: true }, // Required date field
     supplier: { type: String, required: true },
-    costPerUnit: { type: Number, required: true },
+    costPerUnit: { type: Number, required: true }, // Required cost field
     status: { type: String, required: true },
   },
   {

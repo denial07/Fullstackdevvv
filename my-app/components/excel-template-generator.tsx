@@ -17,10 +17,10 @@ export function ExcelTemplateGenerator() {
         minStock: 0,
         maxStock: 0,
         location: "Warehouse X-X",
-        receivedDate: new Date().toISOString().split("T")[0],
-        expiryDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
         supplier: "Supplier Name",
-        costPerUnit: 0,
+        receivedDate: "", // Optional - can be empty
+        expiryDate: "2025-12-31", // Required expiry date  
+        costPerUnit: "25.50", // Required cost per unit
       },
     ]
 
@@ -37,18 +37,18 @@ export function ExcelTemplateGenerator() {
 
     // Add column descriptions as comments
     const descriptions = {
-      A1: "Unique ID (e.g., INV-001)",
-      B1: "Item name", 
-      C1: "Category (e.g., Hardwood, Softwood)",
-      D1: "Current quantity (numeric)",
-      E1: "Unit of measurement (e.g., m³)",
-      F1: "Minimum stock level (numeric)",
-      G1: "Maximum stock level (numeric)",
-      H1: "Storage location (e.g., Warehouse A-1)",
-      I1: "Date received (YYYY-MM-DD)",
-      J1: "Expiry date (YYYY-MM-DD)",
-      K1: "Supplier name",
-      L1: "Cost per unit (numeric)",
+      A1: "Unique ID (e.g., INV-001) - REQUIRED",
+      B1: "Item name - REQUIRED", 
+      C1: "Category (e.g., Hardwood, Softwood) - REQUIRED",
+      D1: "Current quantity (numeric) - REQUIRED",
+      E1: "Unit of measurement (e.g., m³) - REQUIRED",
+      F1: "Minimum stock level (numeric) - REQUIRED",
+      G1: "Maximum stock level (numeric) - REQUIRED",
+      H1: "Storage location (e.g., Warehouse A-1) - REQUIRED",
+      I1: "Supplier name - REQUIRED",
+      J1: "Date received (YYYY-MM-DD) - OPTIONAL",
+      K1: "Expiry date (YYYY-MM-DD) - REQUIRED",
+      L1: "Cost per unit (numeric, e.g., 25.50) - REQUIRED",
     }
 
     // Add comments to header cells

@@ -79,25 +79,21 @@ async function handleExcelImport(request: NextRequest) {
     )
   }
 
-  // Transform data for database
-  const inventoryItems = parseResult.data?.map((item: any) => ({
-    id: item['Item ID'] || item['id'] || generateId(),
-    item: item['Item Name'] || item['Item'] || item['item'],
-    category: item['Category'] || item['category'],
-    quantity: Number(item['Quantity'] || item['quantity']) || 0,
-    unit: item['Unit'] || item['unit'] || 'pcs',
-    minStock: Number(item['Min Stock'] || item['MinStock'] || item['minStock']) || 0,
-    maxStock: Number(item['Max Stock'] || item['MaxStock'] || item['maxStock']) || 0,
-    location: item['Location'] || item['location'],
-    receivedDate: formatDate(item['Received Date'] || item['ReceivedDate'] || item['receivedDate']),
-    expiryDate: formatDate(item['Expiry Date'] || item['ExpiryDate'] || item['expiryDate']),
-    supplier: item['Supplier'] || item['supplier'],
-    costPerUnit: Number(item['Cost Per Unit'] || item['CostPerUnit'] || item['costPerUnit']) || 0,
-    status: calculateStatus(
-      Number(item['Quantity'] || item['quantity']) || 0,
-      Number(item['Min Stock'] || item['MinStock'] || item['minStock']) || 0,
-      formatDate(item['Expiry Date'] || item['ExpiryDate'] || item['expiryDate'])
-    ),
+  // Use the validated data from the parser (already processed and normalized)
+  const inventoryItems = validationResult.validItems.map((item: any) => ({
+    id: item.id || generateId(),
+    item: item.item,
+    category: item.category,
+    quantity: item.quantity || 0,
+    unit: item.unit || 'pcs',
+    minStock: item.minStock || 0,
+    maxStock: item.maxStock || 0,
+    location: item.location,
+    receivedDate: item.receivedDate || new Date().toISOString().split('T')[0],
+    expiryDate: item.expiryDate || '',
+    supplier: item.supplier,
+    costPerUnit: item.costPerUnit || 0,
+    status: item.status || 'Good',
     createdAt: new Date(),
     updatedAt: new Date()
   }))

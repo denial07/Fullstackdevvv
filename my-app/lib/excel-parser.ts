@@ -47,8 +47,9 @@ const HEADER_ALIASES: Record<string, string> = {
   "received date": "receivedDate",
   "date received": "receivedDate",
   "expiry date": "expiryDate",
-  "exp date": "expiryDate",
+  "exp date": "expiryDate", 
   "expiration date": "expiryDate",
+  "expirydate": "expiryDate",
 
   // supplier & cost
   "supplier": "supplier",
@@ -56,6 +57,12 @@ const HEADER_ALIASES: Record<string, string> = {
   "cost per unit": "costPerUnit",
   "unit cost": "costPerUnit",
   "cpu": "costPerUnit",
+  "cost/unit": "costPerUnit",
+  "price per unit": "costPerUnit",
+  "unit price": "costPerUnit",
+  "price": "costPerUnit",
+  "cost": "costPerUnit",
+  "costperunit": "costPerUnit",
 }
 
 /** Normalize a header for alias lookup. */
@@ -66,6 +73,14 @@ function normHeader(h: string): string {
 /** Fallback: convert a label to camelCase key */
 function camelize(h: string): string {
   const s = h.trim().toLowerCase()
+  
+  // Handle specific cases first
+  if (s === 'expirydate') return 'expiryDate'
+  if (s === 'costperunit') return 'costPerUnit'
+  if (s === 'receiveddate') return 'receivedDate'
+  if (s === 'minstock') return 'minStock'
+  if (s === 'maxstock') return 'maxStock'
+  
   return s.replace(/[^a-z0-9]+(.)/g, (_m, c: string) => c.toUpperCase())
 }
 
@@ -98,24 +113,27 @@ function uniqueHeaders(headers: string[]): string[] {
 
 /** Try to coerce incoming cell values into import-friendly primitives. */
 function coerceValue(val: ExcelJS.CellValue): any {
-  if (val == null) return ""
+  if (val == null || val === undefined) return ""
   if (val instanceof Date) return toISODate(val)
 
   // Formula / rich objects
   const v: any = val
   if (typeof v === "object" && !(v instanceof Date)) {
     if (v.result != null) return coerceValue(v.result)
-    if (typeof v.text === "string") return v.text
-    if (Array.isArray(v.richText)) return v.richText.map((r: any) => r.text ?? "").join("")
-    if (v.hyperlink) return v.text ?? v.hyperlink
+    if (typeof v.text === "string") return v.text.trim()
+    if (Array.isArray(v.richText)) return v.richText.map((r: any) => r.text ?? "").join("").trim()
+    if (v.hyperlink) return (v.text ?? v.hyperlink).trim()
   }
 
   // Primitive
   if (typeof val === "number") return val
   if (typeof val === "boolean") return val
-  if (typeof val === "string") return val.trim()
+  if (typeof val === "string") {
+    const trimmed = val.trim()
+    return trimmed === "" ? "" : trimmed
+  }
 
-  return String(val)
+  return String(val).trim()
 }
 
 /** Convert either Date | number (excel serial) | string into YYYY-MM-DD or '' if invalid. */
@@ -137,17 +155,23 @@ function toISODate(input: any): string {
   if (typeof input === "string") {
     const s = input.trim()
     if (!s) return ""
-    // dd/mm/yyyy or d/m/yy
+    
+    // dd/mm/yyyy or d/m/yy format
     const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
     if (m) {
       const [_, d, mo, y] = m
       const yyyy = Number(y.length === 2 ? (Number(y) >= 70 ? "19" + y : "20" + y) : y)
       const mm = String(Number(mo)).padStart(2, "0")
       const dd = String(Number(d)).padStart(2, "0")
-      const dt = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`)
-      if (!isNaN(dt.getTime())) return dt.toISOString().slice(0, 10)
+      
+      // Validate the date components
+      if (Number(mm) >= 1 && Number(mm) <= 12 && Number(dd) >= 1 && Number(dd) <= 31) {
+        const dt = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`)
+        if (!isNaN(dt.getTime())) return dt.toISOString().slice(0, 10)
+      }
     }
-    // Fallback: Date.parse
+    
+    // Try other common formats
     const d2 = new Date(s)
     if (!isNaN(d2.getTime())) return d2.toISOString().slice(0, 10)
   }
@@ -206,11 +230,23 @@ export async function parseExcelFile(file: File): Promise<ExcelParseResult> {
         const cell = row.getCell(c)
         const val = coerceValue(cell.value as any)
 
+        // Skip if key is undefined (shouldn't happen but safety check)
+        if (!key) continue
+
         // Normalize potential date-like values onto date fields by key heuristic
         if (/(receiveddate|expirydate)$/i.test(key)) {
           const iso = toISODate(val)
           rowObj[key] = iso
           if (iso) hasData = true
+        } else if (/(costperunit|price|cost)$/i.test(key)) {
+          // Handle cost/price fields - don't default to 0 for empty values since it might be required
+          if (val !== "" && val != null && val !== undefined) {
+            const numVal = parseFloat(String(val).replace(/[^\d.-]/g, ''))
+            rowObj[key] = isNaN(numVal) ? null : numVal
+            if (numVal && numVal > 0) hasData = true
+          } else {
+            rowObj[key] = null // Mark as missing so validation can catch it
+          }
         } else {
           // leave as string/number/bool
           rowObj[key] = val
@@ -247,19 +283,23 @@ export function validateInventoryData(data: any[]): {
   const requiredFields = [
     "id",
     "item",
-    "category",
+    "category", 
     "quantity",
     "unit",
     "minStock",
     "maxStock",
     "location",
-    "receivedDate",
-    "expiryDate",
     "supplier",
+    "expiryDate",
     "costPerUnit",
   ]
 
+  const optionalFields = [
+    "receivedDate",
+  ]
+
   const numericFields = ["quantity", "minStock", "maxStock", "costPerUnit"]
+  const optionalNumericFields: string[] = []
   const dateFields = ["receivedDate", "expiryDate"]
 
   const validItems: any[] = []
@@ -270,7 +310,8 @@ export function validateInventoryData(data: any[]): {
     if (v === "" || v == null) return null
     if (typeof v === "number") return v
     if (typeof v === "string") {
-      const s = v.replace(/,/g, "").trim()
+      // Remove currency symbols, commas, and other formatting
+      const s = v.replace(/[$€£¥₹₩₨₱S\s,]/g, "").trim()
       const n = Number(s)
       return isNaN(n) ? null : n
     }
@@ -294,24 +335,37 @@ export function validateInventoryData(data: any[]): {
       }
     }
 
-    // Numbers
+    // Numbers (required)
     for (const field of numericFields) {
-      const n = toNumber(row[field])
-      if (row[field] !== undefined && row[field] !== "" && n === null) {
-        rowErrors.push(`Field ${field} must be a number`)
-      } else if (n !== null) {
-        row[field] = n
+      if (row[field] === undefined || row[field] === "" || row[field] === null) {
+        rowErrors.push(`Missing required field: ${field}`)
+      } else {
+        const n = toNumber(row[field])
+        if (n === null) {
+          rowErrors.push(`Field ${field} is required and must be a number`)
+        } else {
+          row[field] = field === 'costPerUnit' ? (n >= 0 ? n : 0) : n // Ensure non-negative cost
+        }
       }
     }
 
-    // Dates
+    // Dates (required and optional)
     for (const field of dateFields) {
-      if (row[field] !== undefined && row[field] !== "") {
+      const isRequired = requiredFields.includes(field)
+      
+      if (row[field] !== undefined && row[field] !== "" && row[field] !== null) {
         const iso = onlyDate(toISODate(row[field]))
         if (!iso) {
           rowErrors.push(`Field ${field} must be a valid date (YYYY-MM-DD)`)
         } else {
           row[field] = iso
+        }
+      } else {
+        if (isRequired) {
+          rowErrors.push(`Missing required field: ${field}`)
+        } else {
+          // Set empty string for optional date fields
+          row[field] = ""
         }
       }
     }
