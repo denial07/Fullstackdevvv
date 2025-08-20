@@ -75,47 +75,101 @@ export default function DashboardPage() {
     }
     load()
   }, [period])
+  function normStatus(s: { status?: string; delay?: number }) {
+    const raw = String(s?.status ?? '').trim().toLowerCase();
+    const delayDays = Math.max(0, Number(s?.delay ?? 0)) || 0;
+
+    if (raw === 'arrived' || raw === 'delivered') return 'arrived';
+    if (raw === 'delayed' || delayDays > 0) return 'delayed';
+    if (raw === 'in transit' || raw === 'transit' || raw === 'customs clearance') return 'in_transit';
+
+    // fallback: treat unknown as in_transit so it shows up as active
+    return 'in_transit';
+  }
+
+  function num(v: unknown): number {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+    if (typeof v === 'string') {
+      // strip currency symbols/commas/etc., keep digits, minus and dot
+      const cleaned = v.replace(/[^\d.-]/g, '');
+      const n = parseFloat(cleaned);
+      return Number.isNaN(n) ? 0 : n;
+    }
+    return 0;
+  }
+
 
   // ---------- Derived insights (computed on safe fallbacks to obey Rules of Hooks) ----------
   const recentShipmentsArr = data?.recentShipments ?? []
   const criticalInventoryArr = data?.criticalInventory ?? []
 
-  // (1) Shipment KPIs derived from shipments data
+  // (1) Shipment KPIs derived from shipments data (mutually exclusive buckets)
   const shipmentSummary: ShipmentSummary = useMemo(() => {
-    let inTransit = 0, delayed = 0, arrived = 0, totalValue = 0
-    for (const s of recentShipmentsArr) {
-      if (s.status === 'In Transit') inTransit++
-      if (s.status === 'Arrived') arrived++
-      // treat any positive delay or explicit 'Delayed' status as delayed
-      if (s.status === 'Delayed' || (s.delay || 0) > 0) delayed++
-      totalValue += Number(s.value || 0)
-    }
-    return {
-      total: recentShipmentsArr.length,
-      inTransit,
-      delayed,
-      arrived,
-      totalValue
-    }
-  }, [recentShipmentsArr])
+    let inTransit = 0, delayed = 0, arrived = 0, totalValue = 0;
 
-  // (2) Shipment trends derived from shipments data
-  const shipmentTrends: ShipmentTrendPoint[] = useMemo(() => {
-    // Group by start-of-week (Mon) using expectedArrival
-    const map = new Map<string, { ts: number; inTransit: number; arrived: number; delayed: number }>()
     for (const s of recentShipmentsArr) {
-      const key = weekKeyFromISO(s.expectedArrival)
-      if (!key) continue
-      const row = map.get(key) || { ts: new Date(key).getTime(), inTransit: 0, arrived: 0, delayed: 0 }
-      if (s.status === 'In Transit') row.inTransit++
-      if (s.status === 'Arrived') row.arrived++
-      if (s.status === 'Delayed' || (s.delay || 0) > 0) row.delayed++
-      map.set(key, row)
+      const rawStatus = String(s?.status ?? '').trim().toLowerCase();
+      const delayDays = Number.isFinite(Number(s?.delay)) ? Math.max(0, Number(s!.delay as any)) : 0;
+
+      // normalize common variants
+      const status =
+        rawStatus === 'delivered' || rawStatus === 'arrived'
+          ? 'arrived'
+          : rawStatus === 'in transit' || rawStatus === 'transit' || rawStatus === 'customs clearance'
+            ? 'in_transit'
+            : rawStatus === 'delayed'
+              ? 'delayed'
+              : 'unknown';
+
+      // exclusive categorization
+      if (status === 'arrived') {
+        arrived++;
+      } else if (status === 'delayed' || delayDays > 0) {
+        // not arrived yet but late → delayed
+        delayed++;
+      } else if (status === 'in_transit') {
+        inTransit++;
+      } else {
+        // fallback: treat unknown as in transit
+        inTransit++;
+      }
+
+      const val = Number(s?.value ?? 0);
+      if (!Number.isNaN(val)) totalValue += val;
     }
+
+    const total = inTransit + delayed + arrived;
+    return { total, inTransit, delayed, arrived, totalValue };
+  }, [recentShipmentsArr]);
+
+
+  const shipmentTrends: ShipmentTrendPoint[] = useMemo(() => {
+    const map = new Map<string, { ts: number; inTransit: number; arrived: number; delayed: number }>();
+
+    for (const s of recentShipmentsArr) {
+      const key = weekKeyFromISO(s.expectedArrival);
+      if (!key) continue;
+
+      const row = map.get(key) || { ts: new Date(key).getTime(), inTransit: 0, arrived: 0, delayed: 0 };
+      const bucket = normStatus(s);
+
+      if (bucket === 'arrived') row.arrived++;
+      else if (bucket === 'delayed') row.delayed++;
+      else row.inTransit++;
+
+      map.set(key, row);
+    }
+
     return Array.from(map.entries())
       .sort((a, b) => a[1].ts - b[1].ts)
-      .map(([week, v]) => ({ week: formatWeekLabel(week), inTransit: v.inTransit, arrived: v.arrived, delayed: v.delayed }))
-  }, [recentShipmentsArr])
+      .map(([week, v]) => ({
+        week: formatWeekLabel(week),
+        inTransit: v.inTransit,
+        arrived: v.arrived,
+        delayed: v.delayed,
+      }));
+  }, [recentShipmentsArr]);
+
 
   // Additional KPIs derived from shipments
   const { recentOnTimeRate, avgDelayDays } = useMemo(() => {
@@ -128,23 +182,26 @@ export default function DashboardPage() {
   }, [recentShipmentsArr])
 
   const vendorRows = useMemo(() => {
-    const map = new Map<string, { vendor: string; total: number; delayed: number; declaredvalue: number }>()
+    const map = new Map<string, { vendor: string; total: number; delayed: number; declaredvalue: number }>();
     for (const s of recentShipmentsArr) {
-      const key = s.vendor || 'Unknown'
-      const row = map.get(key) || { vendor: key, total: 0, delayed: 0, declaredvalue: 0 }
-      row.total += 1
-      row.delayed += (s.status === 'Delayed' || (s.delay || 0) > 0) ? 1 : 0
-      row.declaredvalue += Number(s.value || 0)
-      map.set(key, row)
+      const key = s.vendor || 'Unknown';
+      const row = map.get(key) || { vendor: key, total: 0, delayed: 0, declaredvalue: 0 };
+      row.total += 1;
+      if (normStatus(s) === 'delayed') row.delayed += 1;
+      row.declaredvalue += num(s.value);
+      map.set(key, row);
     }
-    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 5)
-  }, [recentShipmentsArr])
+    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 5);
+  }, [recentShipmentsArr]);
+
 
   const alerts = useMemo(() => {
-    const delayedShipments = recentShipmentsArr.filter(s => s.status === 'Delayed' || (s.delay || 0) > 0)
-    const expiring = criticalInventoryArr.filter(i => i.status === 'Expiring Soon' || i.status === 'Expired')
-    return { delayedShipments, expiring }
-  }, [recentShipmentsArr, criticalInventoryArr])
+    const delayedShipments = recentShipmentsArr.filter(s => normStatus(s) === 'delayed');
+    const expiring = criticalInventoryArr.filter(i => i.status === 'Expiring Soon' || i.status === 'Expired');
+    return { delayedShipments, expiring };
+  }, [recentShipmentsArr, criticalInventoryArr]);
+
+
 
   // ---------- Early returns after all hooks are declared ----------
   if (loading) {
@@ -195,7 +252,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
           <KpiTile
             label="Active Shipments"
-            value={shipmentSummary.total.toString()}
+            value={((shipmentSummary.inTransit) + (shipmentSummary.delayed)).toString()}
             hint={`${shipmentSummary.delayed} delayed`}
             icon={<Ship className="h-4 w-4 text-blue-700" />}
           />
