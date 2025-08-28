@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "postbuild": "next-sitemap",
+    "vercel-build": "next build",
     "seed:shipments": "ts-node scripts/seedShipments.ts",
     "seed:orders": "ts-node scripts/seedOrders.ts",
     "seed:company": "ts-node scripts/seed-company.ts",
