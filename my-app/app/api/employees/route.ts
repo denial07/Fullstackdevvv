@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/mongodb";
 import User from "@/lib/models/User";
+import Employee from "@/lib/models/Employee";
 
 // Helper function to verify authentication token and get user info
 async function verifyUser(request: NextRequest) {
@@ -25,21 +26,6 @@ async function verifyUser(request: NextRequest) {
       console.log("🔍 Employee API - Token expired");
       throw new Error("Token expired");
     }
-
-    await connectToDatabase();
-    const user = await User.findById(decoded.userId).select("-password");
-    console.log("🔍 Employee API - User found:", user ? `${user.name} (${user.role})` : "No user");
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    return user;
-  } catch (error) {
-    console.log("🔍 Employee API - Auth error:", error);
-    throw new Error("Unauthorized");
-  }
-}
 
     await connectToDatabase();
     const user = await User.findById(decoded.userId).select("-password");
